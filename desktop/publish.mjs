@@ -1,8 +1,35 @@
 import path from 'node:path';
 import { publicationHtml, verifyPublishedHtml } from '../scripts/publication.mjs';
+import { parseFeed } from '../scripts/tistory.mjs';
 
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const error = message => { throw new Error(message); };
+
+export async function waitForPublishedPost({ blogUrl, draft, uploaded, candidateUrl, fetchPublic = fetch, timeoutMs = 90000 }) {
+  const origin = new URL(blogUrl).origin, candidates = new Set([candidateUrl]);
+  const articleUrl = value => { try { const u = new URL(value); return u.origin === origin && /^\/(\d+|entry\/[^/]+)\/?$/.test(u.pathname); } catch { return false; } };
+  const deadline = Date.now() + timeoutMs;
+  do {
+    // Tistory can show an /entry/ slug in the editor while the published permalink
+    // is numeric. Its public feed supplies the actual link after publication.
+    try {
+      const feed = await fetchPublic(`${origin}/rss`, { redirect: 'manual', credentials: 'omit', signal: AbortSignal.timeout(10000), headers: { 'Cache-Control': 'no-cache' } });
+      if (feed.ok) for (const post of parseFeed(await feed.text(), origin).posts) if (post.title === draft.title && articleUrl(post.url)) candidates.add(post.url);
+    } catch { /* A cached or temporarily unavailable feed does not discard the editor URL. */ }
+    for (const url of [...candidates].reverse()) {
+      if (!articleUrl(url)) continue;
+      try {
+        const response = await fetchPublic(url, { redirect: 'manual', credentials: 'omit', signal: AbortSignal.timeout(10000) });
+        if (response.status >= 300 && response.status < 400) {
+          const target = new URL(response.headers.get('location'), url).href;
+          if (articleUrl(target)) candidates.add(target);
+        } else if (response.ok && verifyPublishedHtml(await response.text(), draft, uploaded)) return url;
+      } catch { /* Keep checking only public pages; never resubmit a post. */ }
+    }
+    if (Date.now() < deadline) await pause(1500);
+  } while (Date.now() < deadline);
+  error('공개 발행 요청 후 게시 결과를 확인하지 못했습니다.');
+}
 
 // These controls were checked in the signed-in Tistory editor on 2026-09-15.
 // Only the editor's public DOM and TinyMCE API are used; no private write API.
@@ -52,7 +79,8 @@ function editorCommand(command, data) {
   }
   if (command === 'tagSaved') {
     const input = document.getElementById('tagText');
-    return input?.value === '' && normalize(input.parentElement.textContent).includes(normalize(data.tag));
+    return input?.value === '' && [...document.querySelectorAll('a')].some(a =>
+      [a.textContent, a.getAttribute('aria-label'), a.getAttribute('title')].some(label => normalize(label) === normalize(`${data.tag} 태그 수정`)));
   }
   if (command === 'verify') {
     const expected = new DOMParser().parseFromString(data.html, 'text/html').body;
@@ -174,20 +202,14 @@ export function createTistoryPublisher({ openWindow, fetchPublic = fetch, onDryR
       // The development harness can inspect the real editor without creating a test post.
       if (onDryRun) { await onDryRun({ win, url: panel.url, draft, html, uploaded }); error('검증 모드: 사진과 본문 입력까지 확인했습니다. 공개 발행은 실행하지 않았습니다.'); }
       beforeSubmit(); submitted = true;
-      if (!await evalEditor('click', { id: 'publish-btn', text: '공개 발행' })) error('공개 발행 버튼을 누르지 못했습니다.');
+      try {
+        if (!await evalEditor('click', { id: 'publish-btn', text: '공개 발행' })) error('공개 발행 버튼을 누르지 못했습니다.');
+      } catch {
+        // Successful submission can navigate away before executeJavaScript replies.
+        // Verification is read-only and does not need the editor window to stay open.
+      }
       onProgress('verifying', '공개된 글의 제목·본문·사진을 확인하고 있어요.');
-      const url = await until(async () => {
-        try {
-          // Fetch without the login session: a private/failed publication cannot pass.
-          const response = await fetchPublic(panel.url, { redirect: 'manual', signal: AbortSignal.timeout(10000) });
-          if (response.status >= 300 && response.status < 400) {
-            const next = new URL(response.headers.get('location'), panel.url);
-            if (next.origin === blog.origin && /^\/(\d+|entry\/[^/]+)\/?$/.test(next.pathname)) panel.url = next.href;
-            return null;
-          }
-          return response.ok && verifyPublishedHtml(await response.text(), draft, uploaded) ? panel.url : null;
-        } catch { return null; }
-      }, '공개 발행 요청 후 게시 결과를 확인하지 못했습니다.', 90000);
+      const url = await waitForPublishedPost({ blogUrl, draft, uploaded, candidateUrl: panel.url, fetchPublic });
       return { url, title: draft.title, verifiedAt: new Date().toISOString(), evidence: { public: true, body: true, images: true } };
     } catch (err) {
       if (!submitted && !win.isDestroyed()) win.setTitle(`발행 중단 · ${err.message}`);
