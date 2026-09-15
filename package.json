@@ -1,7 +1,7 @@
 {
   "name": "tistory-draft-workflow",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "H.Dev Studio - 개발 캡처와 티스토리 글 작업실",
   "author": "H.Dev",
   "main": "desktop/main.mjs",
@@ -14,7 +14,7 @@
     "start": "node scripts/server.mjs",
     "blog": "node scripts/blog.mjs",
     "desktop": "electron .",
-    "build:exe": "electron-builder --win portable --x64 --config.directories.output=dist/0.3.0"
+    "build:exe": "electron-builder --win portable --x64 --config.directories.output=dist/0.3.1"
   },
   "devDependencies": {
     "electron": "44.3.0",
