@@ -5,6 +5,9 @@ drafts/*
 style/samples/*
 !style/samples/.gitkeep
 style/profile.md
+style/settings.json
+style/analysis.json
+style/history/
 node_modules/
 .env
 .env.*
