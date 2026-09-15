@@ -21,10 +21,15 @@ function editorCommand(command, data) {
   if (command === 'empty') return !title.value.trim() && !editor.getBody().textContent.trim() && !images().length;
   if (command === 'images') return images();
   if (command === 'imageMarkup') {
-    const doc = new DOMParser().parseFromString(editor.getContent(), 'text/html');
-    const img = [...doc.querySelectorAll('img')].find(i => i.getAttribute('src') === data.src);
+    // Tistory's getContent hook serializes images into its own shortcode format.
+    // Keep the actual uploaded figure and its Tistory metadata from the editor DOM.
+    const img = [...editor.getBody().querySelectorAll('img')].find(i => i.getAttribute('src') === data.src);
     if (!img) throw new Error('업로드된 사진 정보를 읽지 못했습니다.');
-    return (img.closest('figure') || img).outerHTML;
+    const copy = (img.closest('figure') || img).cloneNode(true);
+    for (const el of [copy, ...copy.querySelectorAll('*')]) {
+      for (const attr of [...el.attributes]) if (attr.name.startsWith('data-mce-') || attr.name === 'contenteditable') el.removeAttribute(attr.name);
+    }
+    return copy.outerHTML;
   }
   if (command === 'click') {
     const button = document.getElementById(data.id);
@@ -88,7 +93,9 @@ export function createTistoryPublisher({ openWindow, fetchPublic = fetch, onDryR
     const evalEditor = async (command, data = {}) => {
       if (win.isDestroyed()) error('티스토리 창이 닫혔습니다.');
       if (new URL(wc.getURL() || 'about:blank').origin !== blog.origin) error('로그인이 필요하거나 다른 블로그로 이동했습니다.');
-      return wc.executeJavaScript(`(${editorCommand.toString()})(${JSON.stringify(command)},${JSON.stringify(data)})`, true);
+      const result = await wc.executeJavaScript(`(() => { try { return { value: (${editorCommand.toString()})(${JSON.stringify(command)},${JSON.stringify(data)}) }; } catch (error) { return { error: error.message }; } })()`, true);
+      if (result.error) error(`${command}: ${result.error}`);
+      return result.value;
     };
     const until = async (check, message, timeout = 30000) => {
       const end = Date.now() + timeout;

@@ -1,9 +1,9 @@
 {
-  "version": "0.3.0",
-  "summary": "검토한 초안의 사진·본문·태그를 입력하고 한 번의 버튼 클릭으로 공개 발행",
-  "artifact": "dist/win-unpacked/resources/app.asar",
-  "archiveSha256": "cdcd802b9708baf5c39dd6eb4b95d1f3674fe6183b4259b03585b96ba199a43b",
-  "recoveredAt": "2026-09-15T09:04:54.952Z",
+  "version": "0.3.1",
+  "summary": "티스토리 편집기 이미지 요소와 태그 입력 수정",
+  "artifact": "dist/0.3.1/win-unpacked/resources/app.asar",
+  "archiveSha256": "0877ba656316280404c9d54f8e352302bde80ecafb0b90e7a4fe8a82995dede7",
+  "recoveredAt": "2026-09-15T09:04:55.423Z",
   "files": [
     {
       "path": "desktop/assets/icon.ico",
@@ -25,15 +25,15 @@
     },
     {
       "path": "desktop/main.mjs",
-      "bytes": 8010,
-      "sha256": "b1c0ad33e2c207d093351c5b111c56f49ebc2d66e9ef0a9e33f4c32abd9fbd7f",
-      "gitContentSha256": "b1c0ad33e2c207d093351c5b111c56f49ebc2d66e9ef0a9e33f4c32abd9fbd7f"
+      "bytes": 8838,
+      "sha256": "3d15dda26939d5736873f08c9fbcea12ea9960234cc8dd92e024793b924a0712",
+      "gitContentSha256": "3d15dda26939d5736873f08c9fbcea12ea9960234cc8dd92e024793b924a0712"
     },
     {
       "path": "desktop/publish.mjs",
-      "bytes": 12885,
-      "sha256": "7b0934b071a83477a2d3650692ad97c9d269e5d35c87ef5b76a0bccfbfd89e5f",
-      "gitContentSha256": "7b0934b071a83477a2d3650692ad97c9d269e5d35c87ef5b76a0bccfbfd89e5f"
+      "bytes": 13434,
+      "sha256": "51ef1c7658beff5fbe4140bee6fa93c6c148794a254bcde71e9003bb4f2d1674",
+      "gitContentSha256": "51ef1c7658beff5fbe4140bee6fa93c6c148794a254bcde71e9003bb4f2d1674"
     },
     {
       "path": "scripts/blog.mjs",
@@ -90,6 +90,11 @@
       "gitContentSha256": "475bb925339a788b292fbd88766da209ef1c0255ddb154ed524c79be94097a6a"
     }
   ],
+  "portableSource": {
+    "file": "dist/0.3.1/HDev-Studio-0.3.1-win-x64.exe",
+    "sha256": "a5c3d766a539f536f2399012bd19a6638b47552565e872a17051a87c9fb294cb",
+    "note": "Original EXE supplied publish.mjs; the old unpacked build directory contained a later edit."
+  },
   "integrityVerified": true,
   "redactions": [
     {

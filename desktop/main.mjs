@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createApp } from '../scripts/server.mjs';
 import { initializeData } from './data.mjs';
-import { createTistoryPublisher } from './publish.mjs';
+import { randomUUID } from 'node:crypto';
 
 app.setName('H.Dev Studio');
 app.setAppUserModelId('com.hdev.studio');
@@ -57,17 +57,34 @@ function openTistory(url) {
   return win;
 }
 
+async function openDataFolder() {
+  try {
+    // Apps launched from an MSIX host can have a virtualized AppData path.
+    // Explorer needs the physical path, which GetFinalPathNameByHandle resolves.
+    const actualPath = fs.realpathSync.native(dataRoot);
+    const failure = await shell.openPath(actualPath);
+    if (failure) throw new Error(failure);
+  } catch (error) {
+    dialog.showMessageBox(mainWindow, { type: 'error', message: '자료 폴더를 열지 못했습니다.', detail: `${error.message}\n\n저장 위치: ${dataRoot}` });
+  }
+}
+
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
   app.on('second-instance', () => { if (mainWindow) { if (mainWindow.isMinimized()) mainWindow.restore(); mainWindow.show(); mainWindow.focus(); } });
   app.whenReady().then(async () => {
     const bundle = app.getAppPath();
     dataRoot = initializeData(process.env.HDEV_DATA_DIR ? path.resolve(process.env.HDEV_DATA_DIR) : path.join(app.getPath('userData'), 'workspace'), bundle);
-    const publishAdapter = createTistoryPublisher({ openWindow: openTistory,
+    // Load the separately packaged editor connector for each attempt so a connector
+    // fix can be installed while this process keeps the user's login session.
+    const publishAdapter = async request => {
+      const { createTistoryPublisher } = await import(`./publish.mjs?attempt=${randomUUID()}`);
+      return createTistoryPublisher({ openWindow: openTistory,
       onDryRun: !app.isPackaged && process.env.HDEV_PUBLISH_DRY_RUN === '1' ? async result => {
         fs.writeFileSync(path.join(dataRoot, 'publish-dry-run.json'), JSON.stringify({ title: result.draft.title,
           url: result.url, imageCount: Object.keys(result.uploaded).length, verifiedAt: new Date().toISOString(), submitted: false }, null, 2));
-      } : null });
+      } : null })(request);
+    };
     server = createApp({ root: dataRoot, webRoot: path.join(bundle, 'web'), publishAdapter });
     await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
     origin = `http://127.0.0.1:${server.address().port}`;
@@ -83,7 +100,7 @@ else {
     mainWindow.on('closed', () => { mainWindow = null; });
     Menu.setApplicationMenu(Menu.buildFromTemplate([
       { label: '작업실', submenu: [
-        { label: '자료 폴더 열기', click: () => shell.openPath(dataRoot) },
+        { label: '자료 폴더 열기', click: openDataFolder },
         { label: '티스토리 로그인 / 글 관리', click: () => openTistory(`${JSON.parse(fs.readFileSync(path.join(dataRoot, 'tistory.config.json'), 'utf8')).blogUrl}/manage`) },
         { type: 'separator' }, { role: 'close', label: '창 닫기' }
       ] },
