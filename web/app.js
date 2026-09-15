@@ -183,7 +183,7 @@ function updateControls() {
   $('save-all').disabled = running;
   const publication=current?.publication;
   $('transfer').disabled = running || !draft || !settings?.canPublish || ['published','uncertain'].includes(publication?.phase);
-  $('transfer').textContent = publication?.phase==='published' ? '발행 완료' : isPublishing(publication) ? '티스토리에 올리는 중…' : '티스토리에 발행 ↗';
+  $('transfer').textContent = publication?.phase==='published' ? '발행 완료' : publication?.phase==='removed' ? '티스토리에 다시 발행 ↗' : isPublishing(publication) ? '티스토리에 올리는 중…' : '티스토리에 발행 ↗';
   const publishStatus=$('publish-status'); publishStatus.replaceChildren();
   publishStatus.hidden=!draft && !publication?.message;
   if (!publishStatus.hidden) {

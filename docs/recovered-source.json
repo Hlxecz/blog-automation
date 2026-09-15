@@ -1,9 +1,9 @@
 {
-  "version": "0.3.1",
-  "summary": "티스토리 편집기 이미지 요소와 태그 입력 수정",
-  "artifact": "dist/0.3.1/win-unpacked/resources/app.asar",
-  "archiveSha256": "0877ba656316280404c9d54f8e352302bde80ecafb0b90e7a4fe8a82995dede7",
-  "recoveredAt": "2026-09-15T09:04:55.423Z",
+  "version": "0.3.2",
+  "summary": "자료 폴더 실제 경로와 공개 게시 결과 확인 보완",
+  "artifact": "dist/0.3.2/win-unpacked/resources/app.asar",
+  "archiveSha256": "749ff4844d180e185e7bd233be726f8ed354e3020455067abefeafd3d9cdb017",
+  "recoveredAt": "2026-09-15T09:04:55.861Z",
   "files": [
     {
       "path": "desktop/assets/icon.ico",
@@ -31,9 +31,9 @@
     },
     {
       "path": "desktop/publish.mjs",
-      "bytes": 13434,
-      "sha256": "51ef1c7658beff5fbe4140bee6fa93c6c148794a254bcde71e9003bb4f2d1674",
-      "gitContentSha256": "51ef1c7658beff5fbe4140bee6fa93c6c148794a254bcde71e9003bb4f2d1674"
+      "bytes": 14970,
+      "sha256": "92a2698741ce61c22aaf94770b90a522ee8defd7aac91fa0b5cdd895ffeec824",
+      "gitContentSha256": "92a2698741ce61c22aaf94770b90a522ee8defd7aac91fa0b5cdd895ffeec824"
     },
     {
       "path": "scripts/blog.mjs",
@@ -67,9 +67,9 @@
     },
     {
       "path": "web/app.js",
-      "bytes": 30905,
-      "sha256": "37f049344d902397b796db0486ead31f2a2b45a1af44369ca9555060db99510b",
-      "gitContentSha256": "8a5b0fdd874f4a1ed32cb2f92e2523d00afd7af5afad2fb8221d162fd87a30a6"
+      "bytes": 30976,
+      "sha256": "3a652d5dd23f44463a952740a57ed06719c0bf4bcb2d88965e8950897c5c59f3",
+      "gitContentSha256": "372f1de9c15252fdf1bd529b9dc50b54399153595664982996ab67fdfd18b0c2"
     },
     {
       "path": "web/favicon.svg",
@@ -90,11 +90,6 @@
       "gitContentSha256": "475bb925339a788b292fbd88766da209ef1c0255ddb154ed524c79be94097a6a"
     }
   ],
-  "portableSource": {
-    "file": "dist/0.3.1/HDev-Studio-0.3.1-win-x64.exe",
-    "sha256": "a5c3d766a539f536f2399012bd19a6638b47552565e872a17051a87c9fb294cb",
-    "note": "Original EXE supplied publish.mjs; the old unpacked build directory contained a later edit."
-  },
   "integrityVerified": true,
   "redactions": [
     {
