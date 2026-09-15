@@ -7,6 +7,7 @@ import { newJob, readyJob, prepareJob, renderDraft, buildPreview, listJobs } fro
 import { generate, checkCodex } from './generate.mjs';
 import { createLibrary } from './tistory.mjs';
 import { createPublications, draftDigest } from './publication.mjs';
+import { jobStorage, deleteJobStorage } from './storage.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const json = file => JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, ''));
@@ -30,6 +31,10 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
     const dir = path.join(inbox, id);
     fail(exists(dir) && fs.lstatSync(dir).isDirectory() && !fs.lstatSync(dir).isSymbolicLink(), '글을 찾을 수 없습니다.', 404);
     return dir;
+  };
+  const mutableJob = id => {
+    jobDir(id);
+    fail(!active.has(id), '글 작성 또는 발행 중입니다. 완료된 뒤 수정하거나 삭제해 주세요.', 409);
   };
   const metaFor = dir => exists(path.join(dir, 'app.json')) ? json(path.join(dir, 'app.json')) : { title: '', updatedAt: fs.statSync(dir).mtime.toISOString(), directory: null };
   const imageNames = dir => exists(path.join(dir, 'order.json')) ? json(path.join(dir, 'order.json')) : fs.readdirSync(path.join(dir, 'images')).filter(n => /\.(png|jpe?g|webp)$/i.test(n)).sort();
@@ -122,7 +127,7 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
         style: exists(path.resolve(root, c.styleProfile)) ? fs.readFileSync(path.resolve(root, c.styleProfile), 'utf8') : ''
       }); }
       if (route === '/api/jobs' && req.method === 'GET') {
-        const jobs = listJobs(root).map(j => { const p = readJob(j.id); return { id: p.id, title: p.draft?.title || p.title || '새로운 개발 기록', updatedAt: p.updatedAt, imageCount: p.images.length, hasDraft: !!p.draft, phase: p.generation.phase }; });
+        const jobs = listJobs(root).map(j => { const p = readJob(j.id); return { id: p.id, title: p.draft?.title || p.title || '새로운 개발 기록', updatedAt: p.updatedAt, imageCount: p.images.length, hasDraft: !!p.draft, phase: p.generation.phase, busy: active.has(j.id), storageBytes: jobStorage(root, [inbox, output], j.id).bytes }; });
         return sendJson(res, jobs.sort((a,b) => b.updatedAt.localeCompare(a.updatedAt)));
       }
       if (route === '/api/jobs' && req.method === 'POST') {
@@ -136,11 +141,19 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
       if (match) {
         const id = decodeURIComponent(match[1]), action = match[2] || '', dir = jobDir(id);
         if (!action && req.method === 'GET') return sendJson(res, readJob(id));
-        if (req.method !== 'GET' && action !== 'publish') fail(!active.has(id), '글 작성 또는 발행 중입니다. 완료된 뒤 수정해 주세요.', 409);
+        if (req.method !== 'GET' && action !== 'publish') mutableJob(id);
+        if (!action && req.method === 'DELETE') {
+          const deletedBytes = deleteJobStorage(root, [inbox, output], id);
+          generationStates.delete(id);
+          return sendJson(res, { id, deletedBytes });
+        }
         if (action === 'publish' && req.method === 'POST') {
           if (publications.isRunning(dir) || publications.state(dir).phase === 'published') return sendJson(res,readJob(id));
           fail(active.size === 0,'다른 글을 작성하거나 발행하고 있습니다. 완료 후 시도해 주세요.',409);
-          const b=await bodyJson(req), directory=savedDirectory(id,metaFor(dir));
+          const b=await bodyJson(req);
+          mutableJob(id);
+          fail(active.size === 0,'다른 글을 작성하거나 발행하고 있습니다. 완료 후 시도해 주세요.',409);
+          const directory=savedDirectory(id,metaFor(dir));
           fail(directory && exists(path.join(directory,'draft.json')),'먼저 검토한 초안을 보관해 주세요.');
           publications.start({job:dir,directory,expectedDigest:b.draftDigest,onFinish:()=>active.delete(id)});
           active.add(id);
@@ -148,6 +161,7 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
         }
         if (!action && req.method === 'PUT') {
           const b = await bodyJson(req);
+          mutableJob(id);
           fail(typeof b.title === 'string' && b.title.length <= 200 && typeof b.notes === 'string' && b.notes.length <= 20000, '제목이나 메모 길이를 확인해 주세요.');
           const allNames = fs.readdirSync(path.join(dir, 'images'));
           fail(Array.isArray(b.order) && b.order.length <= 20 && new Set(b.order).size === b.order.length && b.order.every(n => allNames.includes(n) && path.basename(n) === n), '사진 목록이 올바르지 않습니다.');
@@ -157,7 +171,7 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
         }
         if (action === 'images' && req.method === 'POST') {
           const bytes = await readBody(req, 10 * 1024 * 1024);
-          fail(!active.has(id), '초안을 작성 중입니다. 완료된 뒤 사진을 올려 주세요.', 409);
+          mutableJob(id);
           const names = imageNames(dir); fail(names.length < 20, '한 글에 사진을 최대 20장까지 올릴 수 있습니다.');
           let ext;
           if (bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]))) ext = '.png';
@@ -204,7 +218,9 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
           return;
         }
         if (action === 'draft' && req.method === 'PUT') {
-          const b = await bodyJson(req), meta = metaFor(dir);
+          const b = await bodyJson(req);
+          mutableJob(id);
+          const meta = metaFor(dir);
           const directory = savedDirectory(id, meta) || prepare(id);
           fail(typeof b.review === 'string', '검토 메모 형식을 확인해 주세요.');
           persistDraft(id, directory, b.draft, b.review);

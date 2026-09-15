@@ -5,6 +5,7 @@ const icons = {
   archive:'<rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v12h14V8M10 12h4"/>',
   feather:'<path d="M20 3c-5-1-13 3-13 10v4h4c6 0 10-8 9-14ZM4 21 16 9M7 17h6M11 13V9"/>',
   save:'<path d="m5 3 12 0 4 4v14H3V3h2Z"/><path d="M7 3v6h9V3M7 21v-8h10v8"/>',
+  trash:'<path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/>',
   images:'<rect x="7" y="3" width="14" height="14" rx="2"/><path d="M3 8v11a2 2 0 0 0 2 2h11M7 13l4-4 5 5 2-2 3 3"/><circle cx="16" cy="7" r="1"/>',
   image:'<rect x="3" y="3" width="18" height="18" rx="3"/><path d="m3 16 5-5 5 5 3-3 5 5"/><circle cx="15" cy="8" r="1.5"/>',
   file:'<path d="M14 2H5v20h14V7l-5-5ZM14 2v6h5M8 12h8M8 16h6"/>',
@@ -17,8 +18,9 @@ document.querySelectorAll('[data-icon]').forEach(el => { el.innerHTML = `<svg vi
 let token, settings, jobs = [], current = null, draft = null, mode = 'preview';
 let draftDirty = false, materialDirty = false, materialVersion = 0, saveTimer, pollTimer, toastTimer;
 let saveQueue = Promise.resolve(), uploadBusy = false, switching = false, publishStarting = false, publishTimer;
+let deleting = false, draftSave = Promise.resolve();
 const isPublishing = p => ['preparing','waiting_login','uploading','filling','submitting','verifying'].includes(p?.phase);
-const busy = (allowPublicationSave = false) => uploadBusy || (!allowPublicationSave && publishStarting) || current?.generation.phase === 'generating' || isPublishing(current?.publication);
+const busy = (allowPublicationSave = false) => deleting || uploadBusy || (!allowPublicationSave && publishStarting) || current?.generation.phase === 'generating' || isPublishing(current?.publication);
 
 async function api(url, options = {}) {
   const response = await fetch(url, { ...options, headers: { 'X-App-Token': token || '', ...(options.json !== undefined ? { 'Content-Type': 'application/json' } : {}), ...options.headers }, body: options.json !== undefined ? JSON.stringify(options.json) : options.body });
@@ -33,7 +35,8 @@ function toast(message, error = false, undo) {
 }
 function modal(title, content) { $('modal-title').textContent = title; $('modal-content').replaceChildren(content); if (!$('modal').open) $('modal').showModal(); }
 $('close-modal').onclick = () => $('modal').close();
-$('modal').addEventListener('click', e => { if (e.target === $('modal') && (e.offsetX < 0 || e.offsetY < 0 || e.offsetX > $('modal').clientWidth || e.offsetY > $('modal').clientHeight)) $('modal').close(); });
+$('modal').addEventListener('cancel', e => { if (deleting) e.preventDefault(); });
+$('modal').addEventListener('click', e => { if (!deleting && e.target === $('modal') && (e.offsetX < 0 || e.offsetY < 0 || e.offsetX > $('modal').clientWidth || e.offsetY > $('modal').clientHeight)) $('modal').close(); });
 function saveStatus(text) { $('save-state').textContent = text; }
 function markMaterial() { materialDirty = true; materialVersion++; saveStatus('변경사항 보관 중…'); clearTimeout(saveTimer); saveTimer = setTimeout(() => saveMaterial().catch(e => { saveStatus('보관 실패'); toast(e.message,true); }), 800); }
 function markDraft() { draftDirty = true; saveStatus('수정한 글 · 보관 필요'); updateFooter(); }
@@ -63,9 +66,11 @@ async function saveMaterial(allowPublicationSave = false) {
 async function saveAll(allowPublicationSave = false) {
   if (busy(allowPublicationSave)) return;
   await saveMaterial(allowPublicationSave);
+  if (busy(allowPublicationSave)) return;
   if (draft && draftDirty) {
     await ensureJob();
-    current = await api(`/api/jobs/${current.id}/draft`, { method:'PUT', json:{ draft, review:$('review-notes').value } });
+    draftSave = api(`/api/jobs/${current.id}/draft`, { method:'PUT', json:{ draft, review:$('review-notes').value } });
+    current = await draftSave;
     draftDirty = false; saveStatus('이 PC에 보관됨'); updateControls(); await refreshJobs();
   }
 }
@@ -84,7 +89,7 @@ async function refreshJobs() {
 }
 async function selectJob(id) {
   showWorkspace();
-  if (switching || publishStarting) return;
+  if (switching || publishStarting || deleting) return;
   switching = true;
   try {
     await saveAll(); clearTimeout(pollTimer);
@@ -99,12 +104,15 @@ async function selectJob(id) {
     saveStatus('이 PC에 보관됨');
     if (current.generation.phase === 'generating') pollGeneration(id);
     if (isPublishing(current.publication)) pollPublication(id);
-  } finally { switching = false; }
+  } finally { switching = false; updateControls(); }
 }
 async function newPost() {
   showWorkspace();
   if (busy()) { toast('현재 작업이 끝난 뒤 새 글을 만들어 주세요.'); return; }
-  await saveAll(); clearTimeout(pollTimer);
+  await saveAll(); clearWorkspace();
+}
+function clearWorkspace() {
+  clearTimeout(saveTimer); clearTimeout(pollTimer); clearTimeout(publishTimer);
   current = null; draft = null; draftDirty = false; materialDirty = false;
   $('topic').value = ''; $('notes').value = ''; $('review-notes').value = ''; $('analysis-text').textContent = '';
   $('breadcrumb-title').textContent = '새로운 개발 기록'; localStorage.removeItem('hdev.current');
@@ -112,18 +120,57 @@ async function newPost() {
 }
 $('new-post').onclick = () => newPost().catch(e => toast(e.message,true));
 $('studio-nav').onclick = () => { showWorkspace(); $('modal').close(); window.scrollTo({ top:0, behavior:'smooth' }); };
-$('archive-nav').onclick = async () => {
+const formatBytes = bytes => bytes < 1024 ? `${bytes} B` : bytes < 1024 ** 2 ? `${(bytes / 1024).toFixed(1)} KB` : bytes < 1024 ** 3 ? `${(bytes / 1024 ** 2).toFixed(1)} MB` : `${(bytes / 1024 ** 3).toFixed(2)} GB`;
+async function showArchive() {
+  if (deleting) return;
   try {
     await refreshJobs(); const box = document.createElement('div');
+    const total = document.createElement('p'); total.className = 'archive-storage'; total.textContent = `이 PC에 ${jobs.length}개 보관 · ${formatBytes(jobs.reduce((sum, job) => sum + job.storageBytes, 0))}`; box.append(total);
     if (!jobs.length) box.textContent = '아직 보관한 글이 없어요. 사진을 올려 첫 기록을 시작해 보세요.';
     for (const job of jobs) {
+      const row = document.createElement('div'); row.className = 'archive-row';
       const b = document.createElement('button'); b.className = 'archive-item';
-      b.innerHTML = `<span><strong>${escape(job.title)}</strong><small>사진 ${job.imageCount}장 · ${new Date(job.updatedAt).toLocaleDateString('ko-KR')}</small></span><span class="archive-badge">${job.phase === 'generating' ? '작성 중' : job.hasDraft ? '초안 보관' : '자료 수집'}</span>`;
-      b.onclick = async () => { try { await selectJob(job.id); $('modal').close(); } catch(e) { toast(e.message,true); } }; box.append(b);
+      b.innerHTML = `<span><strong>${escape(job.title)}</strong><small>사진 ${job.imageCount}장 · ${formatBytes(job.storageBytes)} · ${new Date(job.updatedAt).toLocaleDateString('ko-KR')}</small></span><span class="archive-badge">${job.busy ? '작업 중' : job.hasDraft ? '초안 보관' : '자료 수집'}</span>`;
+      b.onclick = async () => { try { await selectJob(job.id); $('modal').close(); } catch(e) { toast(e.message,true); } };
+      const remove = document.createElement('button'); remove.className = 'button delete-button'; remove.textContent = '삭제'; remove.setAttribute('aria-label', `${job.title} 삭제`); remove.disabled = job.busy || busy() || switching;
+      remove.onclick = () => confirmDelete(job, true);
+      row.append(b, remove); box.append(row);
     }
     const add = document.createElement('button'); add.className = 'text-button'; add.textContent = '＋ 새로운 글 시작하기'; add.onclick = async () => { await newPost(); $('modal').close(); }; box.append(add);
     modal('보관한 글', box);
   } catch(e) { toast(e.message,true); }
+}
+$('archive-nav').onclick = showArchive;
+function confirmDelete(job, fromArchive = false) {
+  if (busy() || switching) return;
+  const box = document.createElement('div'); box.className = 'delete-confirm';
+  box.innerHTML = `<p class="delete-title">${escape(current?.id === job.id ? draft?.title || current.title || job.title : job.title)}</p><p>이 PC에 보관한 사진 원본·메모·모든 초안·편집 이력을 영구 삭제합니다. 목록에서 제외한 사진도 함께 지워집니다.</p><p class="delete-size">정리할 자료 약 ${formatBytes(job.storageBytes)}</p><p>티스토리에 발행한 글은 그대로 유지됩니다. 삭제한 로컬 자료는 복구할 수 없습니다.</p>`;
+  const actions = document.createElement('div'); actions.className = 'delete-actions';
+  const cancel = document.createElement('button'); cancel.className = 'button secondary'; cancel.textContent = '취소';
+  cancel.onclick = () => { if (fromArchive) showArchive(); else $('modal').close(); };
+  const remove = document.createElement('button'); remove.className = 'button danger'; remove.textContent = '이 PC에서 영구 삭제';
+  remove.onclick = async () => {
+    if (busy() || switching) return;
+    deleting = true; cancel.disabled = true; remove.disabled = true; remove.textContent = '삭제 중…'; $('close-modal').disabled = true; updateControls();
+    if (current?.id === job.id) clearTimeout(saveTimer);
+    try {
+      await Promise.allSettled([saveQueue, draftSave]);
+      const result = await api(`/api/jobs/${job.id}`, { method:'DELETE' });
+      if (current?.id === job.id) clearWorkspace();
+      if (localStorage.getItem('hdev.current') === job.id) localStorage.removeItem('hdev.current');
+      await refreshJobs(); $('modal').close();
+      toast(`글과 자료 ${formatBytes(result.deletedBytes)}를 이 PC에서 삭제했어요.`);
+    } catch(e) {
+      toast(e.message,true); remove.disabled = false; cancel.disabled = false; remove.textContent = '이 PC에서 영구 삭제';
+    } finally { deleting = false; $('close-modal').disabled = false; updateControls(); if (materialDirty) saveTimer = setTimeout(() => saveMaterial().catch(e => toast(e.message,true)), 800); }
+  };
+  actions.append(cancel, remove); box.append(actions); modal('보관한 글을 삭제할까요?', box); cancel.focus();
+}
+$('delete-current').onclick = async () => {
+  if (!current || busy() || switching) return;
+  const id = current.id;
+  try { await refreshJobs(); const job = jobs.find(item => item.id === id); if (job && current?.id === id) confirmDelete(job); }
+  catch(e) { toast(e.message,true); }
 };
 function showStyle() { const pre = document.createElement('pre'); pre.textContent = settings?.style || '말투 자료를 준비해 주세요.'; modal('나의 글쓰기 스타일',pre); }
 $('style-nav').onclick = showStyle; $('style-summary').onclick = showStyle;
@@ -181,6 +228,8 @@ function updateControls() {
   $('generate').disabled = running || !hasImages;
   $('manual-start').disabled = running || !hasImages;
   $('save-all').disabled = running;
+  $('delete-current').hidden = !current;
+  $('delete-current').disabled = running || switching;
   const publication=current?.publication;
   $('transfer').disabled = running || !draft || !settings?.canPublish || ['published','uncertain'].includes(publication?.phase);
   $('transfer').textContent = publication?.phase==='published' ? '발행 완료' : publication?.phase==='removed' ? '티스토리에 다시 발행 ↗' : isPublishing(publication) ? '티스토리에 올리는 중…' : '티스토리에 발행 ↗';

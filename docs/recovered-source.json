@@ -1,9 +1,9 @@
 {
-  "version": "0.3.2",
-  "summary": "자료 폴더 실제 경로와 공개 게시 결과 확인 보완",
-  "artifact": "dist/0.3.2/win-unpacked/resources/app.asar",
-  "archiveSha256": "749ff4844d180e185e7bd233be726f8ed354e3020455067abefeafd3d9cdb017",
-  "recoveredAt": "2026-09-15T09:04:55.861Z",
+  "version": "0.3.3",
+  "summary": "로컬 글 용량 확인과 원본·초안·이력 전체 삭제",
+  "artifact": "dist/0.3.3/win-unpacked/resources/app.asar",
+  "archiveSha256": "13e22393f26d66962f2b1655e1f20c0b3fa8338f6f7ad54a5aa4c9641f0cb108",
+  "recoveredAt": "2026-09-15T09:04:56.306Z",
   "files": [
     {
       "path": "desktop/assets/icon.ico",
@@ -55,9 +55,15 @@
     },
     {
       "path": "scripts/server.mjs",
-      "bytes": 18282,
-      "sha256": "91d10739ae8209e8673e783f985be412f9fb74f7886fc01c01d0ab891a27f9f8",
-      "gitContentSha256": "91d10739ae8209e8673e783f985be412f9fb74f7886fc01c01d0ab891a27f9f8"
+      "bytes": 18896,
+      "sha256": "b2ac9e26481ba5588b3f7a8a575831d9e0bd41bd11c0d7cbf20ef822dc20c277",
+      "gitContentSha256": "b2ac9e26481ba5588b3f7a8a575831d9e0bd41bd11c0d7cbf20ef822dc20c277"
+    },
+    {
+      "path": "scripts/storage.mjs",
+      "bytes": 2419,
+      "sha256": "8158cce5d373cd1de54b87e0318394bc26181daaf29eb6dc25c698472b9113ff",
+      "gitContentSha256": "8158cce5d373cd1de54b87e0318394bc26181daaf29eb6dc25c698472b9113ff"
     },
     {
       "path": "scripts/tistory.mjs",
@@ -67,9 +73,9 @@
     },
     {
       "path": "web/app.js",
-      "bytes": 30976,
-      "sha256": "3a652d5dd23f44463a952740a57ed06719c0bf4bcb2d88965e8950897c5c59f3",
-      "gitContentSha256": "372f1de9c15252fdf1bd529b9dc50b54399153595664982996ab67fdfd18b0c2"
+      "bytes": 35013,
+      "sha256": "0f0195a083ae985ad4326c6c0679ada58e043912e968a5191d05ce912ad9d985",
+      "gitContentSha256": "154e35a7c70f56753badbcbbaf3c471ae67aabf42332946a350c1698e124b610"
     },
     {
       "path": "web/favicon.svg",
@@ -79,15 +85,15 @@
     },
     {
       "path": "web/index.html",
-      "bytes": 10357,
-      "sha256": "11f3676437868021f8873717b76280856c262cf4fbc4b3dd353f89f3066be28a",
-      "gitContentSha256": "77120e09cee9099e79266a780511f8bc99ed2e4b5e3850d3f267806702eb8d51"
+      "bytes": 10468,
+      "sha256": "15b2ebd1c38c1d68fcf9dd04dde8ed44c73fe81995601093fdd2dfb941e3754b",
+      "gitContentSha256": "3b47b8d9513b0761215032881f2cfdc88908d3c3ceb9c2b425ba7e932dacda47"
     },
     {
       "path": "web/styles.css",
-      "bytes": 24513,
-      "sha256": "475bb925339a788b292fbd88766da209ef1c0255ddb154ed524c79be94097a6a",
-      "gitContentSha256": "475bb925339a788b292fbd88766da209ef1c0255ddb154ed524c79be94097a6a"
+      "bytes": 25561,
+      "sha256": "be0d7533fd129381b048f6fdbf5b677b55479b2d175a7bc3ce37962d771900ee",
+      "gitContentSha256": "af817f045d67feaccdae8cd21bbf85ae230b0a81c056a7b1a8dcb47567676dd0"
     }
   ],
   "integrityVerified": true,
