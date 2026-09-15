@@ -32,8 +32,8 @@ function run(command) {
   if (command === 'build') {
     if (process.platform !== 'win32') throw new Error('Windows에서 EXE를 빌드하세요.');
     if (fs.existsSync(path.join(info.directory,info.filename))) throw new Error(`${info.version} EXE가 이미 있습니다. 기존 배포본을 유지하려면 새 버전으로 올린 뒤 빌드하세요.`);
-    for (const file of ['tistory.config.json','style/profile.md','style/samples/source-notes.md']) {
-      if (!fs.existsSync(path.join(ROOT,file))) throw new Error('먼저 npm run setup으로 로컬 설정을 준비하세요.');
+    for (const file of ['config/tistory.example.json','config/style.example.md','config/source-notes.example.md']) {
+      if (!fs.existsSync(path.join(ROOT,file))) throw new Error(`공용 기본 설정이 없습니다: ${file}`);
     }
     const result = spawnSync(process.execPath,[path.join(ROOT,'node_modules/electron-builder/cli.js'),'--win','portable','--x64',`--config.directories.output=${info.directory}`],{cwd:ROOT,stdio:'inherit',windowsHide:true});
     if (result.error) throw result.error;

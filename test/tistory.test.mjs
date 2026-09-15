@@ -37,8 +37,17 @@ test('sitemap expands RSS history, concurrent sync deduplicates, failed refresh 
 test('packaged assets stay separate from writable data and initialization preserves edits', async t => {
   const root = temp(t), bundle = path.resolve('.');
   initializeData(root, bundle);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(root,'tistory.config.json'))).blogUrl, 'https://your-blog.tistory.com');
+  assert.equal(fs.readFileSync(path.join(root,'style/profile.md'),'utf8'), fs.readFileSync(path.join(bundle,'config/style.example.md'),'utf8'));
+  const configFile = path.join(root,'tistory.config.json');
+  const localConfig = {...JSON.parse(fs.readFileSync(configFile)), blogUrl: 'https://existing-user.tistory.com'};
+  fs.writeFileSync(configFile, JSON.stringify(localConfig));
   fs.writeFileSync(path.join(root,'style/profile.md'), '수정한 말투');
   initializeData(root,bundle); assert.equal(fs.readFileSync(path.join(root,'style/profile.md'),'utf8'),'수정한 말투');
+  assert.deepEqual(JSON.parse(fs.readFileSync(configFile)), localConfig);
+  const files = JSON.parse(fs.readFileSync(path.join(bundle,'package.json'))).build.files;
+  assert.ok(files.includes('config/**/*'));
+  for (const privateFile of ['tistory.config.json','style/profile.md','style/samples/source-notes.md','ai.settings.json']) assert.equal(files.includes(privateFile), false);
   assert.equal(fs.existsSync(path.join(root,'web')),false);
   const server = createApp({root,webRoot:path.join(bundle,'web'),checkGenerator:async()=>true});
   await new Promise(r=>server.listen(0,'127.0.0.1',r)); t.after(()=>new Promise(r=>server.close(r)));

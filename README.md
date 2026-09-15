@@ -1,11 +1,19 @@
 # H.Dev Studio
 
+<img src="web/logo.png" width="96" height="96" alt="노트에 글을 쓰는 오리 로고">
+
 개발 캡처와 메모로 내 말투의 초안을 만들고, 편집·미리보기 후 티스토리에 발행하는 Windows 앱입니다.
+
+## Windows 앱 다운로드
+
+[H.Dev Studio 0.4.0 다운로드](https://github.com/Hlxecz/blog-automation/releases/tag/v0.4.0)에서 `HDev-Studio-0.4.0-win-x64.exe`를 받아 실행하세요. 설치가 필요 없는 Windows 64비트 앱입니다.
+
+처음 실행하면 **작업실 → 자료 폴더 열기**에서 `tistory.config.json`의 `blogUrl`을 본인 블로그 주소로 바꾸고 앱을 다시 실행합니다. **도움말 · AI 연결**에서 Codex 또는 Claude Code를 선택하고 본인 계정으로 로그인하세요. [자세한 사용 안내](docs/USAGE.md)를 참고하세요.
 
 ## 주요 기능
 
 - 사진 업로드, 순서 변경, 작업 메모
-- 로그인된 Codex CLI를 통한 이미지 분석과 초안 생성
+- Codex / Claude Code CLI 선택, 설치·로그인 도움말, 이미지 분석과 초안 생성
 - 제목·본문·태그 편집과 미리보기
 - 기존 사진에서 표지 선택 또는 별도 표지 업로드
 - 로컬 초안 보관, 용량 확인, 글 단위 삭제
@@ -27,14 +35,14 @@ npm run setup
 
 생성된 `tistory.config.json`의 `blogUrl`에 내 블로그 주소를 입력하고, `style/profile.md`에 말투 지침을 준비합니다. 기본 템플릿은 특정 사용자의 글을 분석한 프로필이 아닙니다. `setup`을 다시 실행해도 기존 설정은 보존합니다.
 
-각 사용자는 자신의 티스토리 계정과 Codex CLI 계정으로 로그인합니다. 글 목록에 다른 블로그를 추가하는 것만으로 발행 대상이 바뀌지는 않습니다. 발행 대상은 `blogUrl`입니다.
+각 사용자는 자신의 티스토리 계정과 선택한 AI의 CLI 계정으로 로그인합니다. 글 목록에 다른 블로그를 추가하는 것만으로 발행 대상이 바뀌지는 않습니다. 발행 대상은 `blogUrl`입니다.
 
 ```powershell
 npm start          # 웹 개발 화면
 npm run desktop    # Electron 앱: 티스토리 발행 지원
 ```
 
-AI 생성은 이 PC에 설치하고 로그인한 **OpenAI Codex CLI**를 사용합니다. 별도 API 키는 연결하지 않았습니다. 사진·메모·말투 지침을 OpenAI에 전송하고 Codex 계정 사용량을 사용합니다.
+앱의 **도움말 · AI 연결**에서 **Codex** 또는 **Claude Code**를 선택하세요. 설치·로그인 명령을 복사하고 연결을 확인할 수 있습니다. 선택은 이 PC에 저장되며 초안 생성과 말투 분석에 함께 적용됩니다. 각 CLI에 본인 계정으로 로그인하며, 앱에 API 키를 입력할 필요는 없습니다. 사진·메모·말투 지침과 분석할 공개 본문은 선택한 제공사에 전송되고 해당 계정의 요금·사용량 정책이 적용됩니다. [AI 연결 방법](docs/USAGE.md#ai-연결-방법)을 참고하세요.
 
 ## 검사와 배포용 EXE
 

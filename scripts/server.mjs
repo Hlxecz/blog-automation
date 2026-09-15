@@ -4,8 +4,10 @@ import path from 'node:path';
 import { randomUUID, randomBytes, createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { newJob, readyJob, prepareJob, renderDraft, buildPreview, listJobs } from './blog.mjs';
-import { generate, checkCodex } from './generate.mjs';
+import { generate } from './generate.mjs';
+import { checkAI, providers } from './ai.mjs';
 import { createLibrary } from './tistory.mjs';
+import { createStyles } from './style.mjs';
 import { createPublications, draftDigest } from './publication.mjs';
 import { jobStorage, deleteJobStorage } from './storage.mjs';
 import { manifestImage } from '../web/draft-model.js';
@@ -18,16 +20,28 @@ const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 const fail = (condition, message, status = 400) => { if (!condition) throw Object.assign(new Error(message), { status }); };
 const MIME = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.js': 'text/javascript', '.css': 'text/css', '.html': 'text/html' };
 
-export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), generator = generate, checkGenerator = checkCodex, fetchPublic = fetch, publishAdapter = null } = {}) {
+export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), generator = generate, checkGenerator = checkAI, fetchPublic = fetch, publishAdapter = null, styleAnalyzer, fetchStyle } = {}) {
   const c = json(path.join(root, 'tistory.config.json'));
   const library = createLibrary(root, c.blogUrl, fetchPublic);
+  const styles = createStyles({ root, profileFile: path.resolve(root, c.styleProfile), analyzer: styleAnalyzer, fetchPage: fetchStyle });
   const publications = createPublications({ adapter: publishAdapter, blogUrl: c.blogUrl });
   const inbox = path.resolve(root, c.inbox), output = path.resolve(root, c.output);
   const token = randomBytes(32).toString('hex');
   const active = new Set();
   const generationStates = new Map();
-  let connected = false;
-  const connectionCheck = checkGenerator().then(ok => { connected = ok; }).catch(() => {});
+  const aiFile = path.join(root, 'ai.settings.json');
+  let provider = exists(aiFile) ? json(aiFile).provider : 'codex';
+  if (!Object.hasOwn(providers, provider)) provider = 'codex';
+  let ai = { provider, status: 'checking', connected: false }, checkingAI = false;
+  async function refreshAI() {
+    const selected = provider;
+    try {
+      const value = await checkGenerator(selected);
+      ai = typeof value === 'boolean' ? { provider: selected, connected: value, status: value ? 'connected' : 'login_required' } : { ...value, provider: selected };
+    } catch { ai = { provider: selected, connected: false, status: 'error' }; }
+    return ai;
+  }
+  const connectionCheck = refreshAI();
   const jobDir = id => {
     fail(/^[\p{L}\p{N}][\p{L}\p{N}_-]{0,79}$/u.test(id), '잘못된 글 주소입니다.');
     const dir = path.join(inbox, id);
@@ -137,6 +151,25 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
       if (req.headers.origin) fail(req.headers.origin === url.origin, '허용되지 않은 요청입니다.', 403);
       if (!['GET', 'HEAD'].includes(req.method)) fail(req.headers['x-app-token'] === token, '앱을 새로고침한 뒤 다시 시도해 주세요.', 403);
       const route = url.pathname;
+      if (route === '/api/ai' && req.method === 'GET') { await connectionCheck; return sendJson(res, ai); }
+      if ((route === '/api/ai' && req.method === 'PUT') || (route === '/api/ai/check' && req.method === 'POST')) {
+        const b = req.method === 'PUT' ? await bodyJson(req) : { provider };
+        fail(Object.hasOwn(providers, b.provider), 'Codex 또는 Claude Code를 선택해 주세요.');
+        fail(!checkingAI && active.size === 0 && !styles.isRunning(), '진행 중인 작업이 끝난 뒤 AI 연결을 변경하거나 확인해 주세요.', 409);
+        checkingAI = true;
+        try {
+          await connectionCheck;
+          write(aiFile, { provider: b.provider }); provider = b.provider;
+          return sendJson(res, await refreshAI());
+        } finally { checkingAI = false; }
+      }
+      if (route === '/api/style' && req.method === 'GET') return sendJson(res, styles.state());
+      if (route === '/api/style' && req.method === 'PUT') return sendJson(res, styles.save(await bodyJson(req)));
+      if (route === '/api/style/analyze' && req.method === 'POST') {
+        const b = await bodyJson(req);
+        fail(!checkingAI, 'AI 연결 확인이 끝난 뒤 다시 시도해 주세요.', 409);
+        return sendJson(res, styles.start(b.urls, { provider }), 202);
+      }
       if (route === '/api/blogs' && req.method === 'GET') return sendJson(res, library.list());
       if (route === '/api/blogs' && req.method === 'POST') {
         const b = await bodyJson(req);
@@ -146,7 +179,7 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
       if (remote && req.method === 'GET' && !remote[2]) return sendJson(res, library.read(remote[1]));
       if (remote && req.method === 'POST' && remote[2] === 'sync') return sendJson(res, await library.sync(remote[1]));
       if (route === '/api/bootstrap' && req.method === 'GET') { await connectionCheck; return sendJson(res, {
-        token, blogUrl: c.blogUrl, connected, canPublish: !!publishAdapter,
+        token, blogUrl: c.blogUrl, connected: ai.connected, ai, canPublish: !!publishAdapter,
         style: exists(path.resolve(root, c.styleProfile)) ? fs.readFileSync(path.resolve(root, c.styleProfile), 'utf8') : ''
       }); }
       if (route === '/api/jobs' && req.method === 'GET') {
@@ -216,6 +249,7 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
           return sendFile(res, path.join(base, 'images', name));
         }
         if (action === 'generate' && req.method === 'POST') {
+          fail(!checkingAI, 'AI 연결 확인이 끝난 뒤 다시 시도해 주세요.', 409);
           fail(active.size === 0, '다른 글을 작성 중입니다. 완료된 뒤 시도해 주세요.', 409);
           fail(imageNames(dir).length > 0, '먼저 개발 캡처를 올려 주세요.');
           const meta = metaFor(dir), previousDirectory = meta.directory || null;
@@ -226,8 +260,9 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
           active.add(id); saveMeta(dir, { generating: true, directory: previousDirectory });
           generationStates.set(id, { phase: 'generating', message: '캡처를 분석할 준비를 하고 있어요.' });
           sendJson(res, readJob(id), 202);
-          generator({ root, directory, title: meta.title, notes: fs.readFileSync(path.join(dir, 'notes.md'), 'utf8'),
+          Promise.resolve().then(() => generator({ provider, root, directory, title: meta.title, notes: fs.readFileSync(path.join(dir, 'notes.md'), 'utf8'),
             style: fs.readFileSync(styleFile, 'utf8'), onProgress: message => generationStates.set(id, { phase: 'generating', message }) })
+          )
             .then(result => {
               fail(typeof result.analysis === 'string' && typeof result.review === 'string' && Array.isArray(result.sensitiveImages), '초안 결과 형식이 올바르지 않습니다.');
               const blocked = new Set(result.sensitiveImages);
@@ -264,7 +299,7 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
         }
         fail(false, '요청한 기능을 찾을 수 없습니다.', 404);
       }
-      const staticFiles = { '/': 'index.html', '/app.js': 'app.js', '/draft-model.js':'draft-model.js', '/styles.css': 'styles.css', '/favicon.svg': 'favicon.svg' };
+      const staticFiles = { '/': 'index.html', '/app.js': 'app.js', '/ai-help.js': 'ai-help.js', '/style-settings.js': 'style-settings.js', '/draft-model.js':'draft-model.js', '/styles.css': 'styles.css', '/favicon.svg': 'favicon.svg', '/favicon.png': 'favicon.png', '/logo.png': 'logo.png' };
       if (req.method === 'GET' && Object.hasOwn(staticFiles, route)) return sendFile(res, path.join(webRoot, staticFiles[route]));
       fail(false, '페이지를 찾을 수 없습니다.', 404);
     } catch (error) {
@@ -272,7 +307,7 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
       else res.end();
     }
   });
-  server.hasActiveGeneration = () => active.size > 0;
+  server.hasActiveGeneration = () => active.size > 0 || styles.isRunning();
   return server;
 }
 
