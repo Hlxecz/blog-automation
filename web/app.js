@@ -1,4 +1,6 @@
 import { articleBlocks } from './draft-model.js';
+import { initStyleSettings } from './style-settings.js';
+import { createAIHelp, connectionMessage } from './ai-help.js';
 
 const $ = id => document.getElementById(id);
 const escape = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]);
@@ -13,7 +15,8 @@ const icons = {
   file:'<path d="M14 2H5v20h14V7l-5-5ZM14 2v6h5M8 12h8M8 16h6"/>',
   sparkles:'<path d="m12 3 2.4 6.6L21 12l-6.6 2.4L12 21l-2.4-6.6L3 12l6.6-2.4L12 3ZM20 2v4M18 4h4"/>',
   check:'<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>',
-  lock:'<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/>'
+  lock:'<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/>',
+  help:'<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 5 0c0 2-2.5 2-2.5 4M12 16h.01"/>'
 };
 document.querySelectorAll('[data-icon]').forEach(el => { el.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[el.dataset.icon] || ''}</svg>`; });
 
@@ -27,7 +30,7 @@ const busy = (allowPublicationSave = false) => deleting || uploadBusy || (!allow
 async function api(url, options = {}) {
   const response = await fetch(url, { ...options, headers: { 'X-App-Token': token || '', ...(options.json !== undefined ? { 'Content-Type': 'application/json' } : {}), ...options.headers }, body: options.json !== undefined ? JSON.stringify(options.json) : options.body });
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || '작업을 완료하지 못했습니다.');
+  if (!response.ok) throw Object.assign(new Error(data.error || '작업을 완료하지 못했습니다.'), { status: response.status });
   return data;
 }
 function toast(message, error = false, undo) {
@@ -36,6 +39,12 @@ function toast(message, error = false, undo) {
   toastTimer = setTimeout(() => { el.hidden = true; }, error ? 7000 : 4000);
 }
 function modal(title, content) { $('modal-title').textContent = title; $('modal-content').replaceChildren(content); if (!$('modal').open) $('modal').showModal(); }
+const openAIHelp = createAIHelp({ api, modal, toast, getAI: () => settings?.ai, onChanged: ai => {
+  if (!settings) return;
+  settings.ai = ai; settings.connected = ai.connected; updateControls();
+} });
+$('help-nav').onclick = openAIHelp;
+window.addEventListener('hdev:ai-help', openAIHelp);
 $('close-modal').onclick = () => $('modal').close();
 $('modal').addEventListener('cancel', e => { if (deleting) e.preventDefault(); });
 $('modal').addEventListener('click', e => { if (!deleting && e.target === $('modal') && (e.offsetX < 0 || e.offsetY < 0 || e.offsetX > $('modal').clientWidth || e.offsetY > $('modal').clientHeight)) $('modal').close(); });
@@ -126,9 +135,14 @@ const formatBytes = bytes => bytes < 1024 ? `${bytes} B` : bytes < 1024 ** 2 ? `
 async function showArchive() {
   if (deleting) return;
   try {
-    await refreshJobs(); const box = document.createElement('div');
-    const total = document.createElement('p'); total.className = 'archive-storage'; total.textContent = `이 PC에 ${jobs.length}개 보관 · ${formatBytes(jobs.reduce((sum, job) => sum + job.storageBytes, 0))}`; box.append(total);
-    if (!jobs.length) box.textContent = '아직 보관한 글이 없어요. 사진을 올려 첫 기록을 시작해 보세요.';
+    await saveAll(); await refreshJobs(); const box = document.createElement('div'); box.className = 'archive-content';
+    const total = document.createElement('p'); total.className = 'archive-storage'; total.textContent = `보관한 기록 ${jobs.length}개 · 사용 공간 ${formatBytes(jobs.reduce((sum, job) => sum + job.storageBytes, 0))}`;
+    if (jobs.length) box.append(total);
+    else {
+      const empty = document.createElement('div'); empty.className = 'archive-empty';
+      empty.innerHTML = '<img src="/logo.png" width="112" height="112" alt=""><h3>첫 개발 기록을 남겨보세요</h3><p>캡처와 메모로 시작한 글이 이곳에 모여요.<br>보관한 글은 언제든 이어서 쓸 수 있어요.</p>';
+      box.append(empty);
+    }
     for (const job of jobs) {
       const row = document.createElement('div'); row.className = 'archive-row';
       const b = document.createElement('button'); b.className = 'archive-item';
@@ -138,7 +152,11 @@ async function showArchive() {
       remove.onclick = () => confirmDelete(job, true);
       row.append(b, remove); box.append(row);
     }
-    const add = document.createElement('button'); add.className = 'text-button'; add.textContent = '＋ 새로운 글 시작하기'; add.onclick = async () => { await newPost(); $('modal').close(); }; box.append(add);
+    const footer = document.createElement('div'); footer.className = 'archive-actions';
+    if (jobs.length) { const hint = document.createElement('span'); hint.textContent = '글을 선택해 이어서 작성하세요.'; footer.append(hint); }
+    const add = document.createElement('button'); add.id = 'archive-new-post'; add.className = 'button primary'; add.textContent = '＋ 새 글 작성';
+    add.disabled = !!busy() || switching;
+    add.onclick = async () => { try { await newPost(); $('modal').close(); $('topic').focus(); } catch(e) { toast(e.message, true); } }; footer.append(add); box.append(footer);
     modal('보관한 글', box);
   } catch(e) { toast(e.message,true); }
 }
@@ -174,8 +192,35 @@ $('delete-current').onclick = async () => {
   try { await refreshJobs(); const job = jobs.find(item => item.id === id); if (job && current?.id === id) confirmDelete(job); }
   catch(e) { toast(e.message,true); }
 };
-function showStyle() { const pre = document.createElement('pre'); pre.textContent = settings?.style || '말투 자료를 준비해 주세요.'; modal('나의 글쓰기 스타일',pre); }
+const styleSettings = initStyleSettings({ api, toast, onSaved: profile => { settings.style = profile; } });
+async function showStyle() {
+  try {
+    await saveAll();
+    await styleSettings.open();
+    document.querySelector('main').hidden = true; $('library-page').hidden = true; $('style-page').hidden = false;
+    $('style-profile').scrollTop = 0;
+    $('studio-nav').classList.remove('selected'); $('library-nav').classList.remove('selected'); $('style-nav').classList.add('selected');
+    window.scrollTo({ top: 0 });
+  } catch (e) { toast(e.message, true); }
+}
 $('style-nav').onclick = showStyle; $('style-summary').onclick = showStyle;
+$('style-back').onclick = () => showWorkspace();
+
+function setSidebar(collapsed) {
+  document.documentElement.classList.toggle('sidebar-collapsed', collapsed);
+  $('sidebar-toggle').setAttribute('aria-expanded', String(!collapsed));
+  $('sidebar-toggle').setAttribute('aria-label', collapsed ? '사이드바 펼치기' : '사이드바 접기');
+  $('sidebar-toggle').title = collapsed ? '사이드바 펼치기' : '사이드바 접기';
+  $('sidebar-scrim').hidden = collapsed || !matchMedia('(max-width:760px)').matches;
+  $('sidebar').inert = collapsed && matchMedia('(max-width:760px)').matches;
+  localStorage.setItem('hdev.sidebar-collapsed', String(collapsed));
+}
+setSidebar(localStorage.getItem('hdev.sidebar-collapsed') === 'true' || (localStorage.getItem('hdev.sidebar-collapsed') === null && matchMedia('(max-width:980px)').matches));
+$('sidebar-toggle').onclick = () => setSidebar(!document.documentElement.classList.contains('sidebar-collapsed'));
+$('sidebar-scrim').onclick = () => setSidebar(true);
+window.addEventListener('keydown', event => { if (event.key === 'Escape' && matchMedia('(max-width:760px)').matches) setSidebar(true); });
+matchMedia('(max-width:760px)').addEventListener('change', () => setSidebar(document.documentElement.classList.contains('sidebar-collapsed')));
+$('sidebar').addEventListener('click', event => { if (event.target.closest('button,a') && matchMedia('(max-width:760px)').matches) setSidebar(true); });
 
 function renderPhotos() {
   const list = $('photo-list'); list.replaceChildren(); const images = current?.images || [];
@@ -248,11 +293,13 @@ function updateControls() {
   $('generate-label').textContent = current?.generation.phase === 'generating' ? '초안을 작성하고 있어요' : draft ? '새 자료로 다시 만들기' : '내 말투로 초안 만들기';
   const status = $('generation-state'); status.className = 'generation-state';
   const generation = current?.generation;
-  let message = settings?.connected ? 'Codex 연결됨 · 사진을 읽고 내 말투로 작성해요' : '이 PC의 Codex 로그인이 필요해요';
+  let message = settings?.connected ? `${connectionMessage(settings.ai)} · 사진을 읽고 내 말투로 작성해요` : connectionMessage(settings?.ai);
+  $('style-ai-provider').textContent = settings?.ai?.provider === 'claude' ? 'Claude Code' : 'Codex';
   if (settings?.connected) status.classList.add('connected');
   if (generation?.phase === 'generating') { status.classList.add('busy'); message = generation.message; }
   if (generation?.phase === 'error') { status.classList.add('error'); message = generation.message; }
   status.replaceChildren(); const dot = document.createElement('span'); dot.className='connection-dot'; const text=document.createElement('span'); text.textContent=message; status.append(dot,text);
+  if (!settings?.connected) { const connect = document.createElement('button'); connect.className = 'text-button'; connect.textContent = 'AI 연결'; connect.onclick = openAIHelp; status.append(connect); }
   $('changed-banner').hidden = !current?.changed;
   $('step-two').className = generation?.phase==='generating' ? 'current' : draft ? 'done' : '';
   $('step-three').className = draft && generation?.phase!=='generating' ? 'current' : '';
@@ -412,7 +459,7 @@ function pollPublication(id){
     }catch(e){toast(e.message,true);pollPublication(id);}
   },1800);
 }
-window.addEventListener('beforeunload',e=>{if(draftDirty||materialDirty){e.preventDefault();e.returnValue='';}});
+window.addEventListener('beforeunload',e=>{if(draftDirty||materialDirty||styleSettings.isDirty()){e.preventDefault();e.returnValue='';}});
 
 async function boot(){
   try{
@@ -426,8 +473,8 @@ boot();
 
 let blogs = [], library = null, libraryLoading = false;
 function showWorkspace() {
-  document.querySelector('main').hidden = false; $('library-page').hidden = true;
-  $('studio-nav').classList.add('selected'); $('library-nav').classList.remove('selected');
+  document.querySelector('main').hidden = false; $('library-page').hidden = true; $('style-page').hidden = true;
+  $('studio-nav').classList.add('selected'); $('library-nav').classList.remove('selected'); $('style-nav').classList.remove('selected');
 }
 function renderLibrary() {
   $('blog-select').replaceChildren(...blogs.map(b => new Option(b.title || b.id, b.id)));
@@ -467,8 +514,8 @@ async function loadBlog(id, sync = false) {
 $('library-nav').onclick = async () => {
   try {
     await saveAll(); blogs = await api('/api/blogs');
-    document.querySelector('main').hidden = true; $('library-page').hidden = false;
-    $('studio-nav').classList.remove('selected'); $('library-nav').classList.add('selected');
+    document.querySelector('main').hidden = true; $('library-page').hidden = false; $('style-page').hidden = true;
+    $('studio-nav').classList.remove('selected'); $('library-nav').classList.add('selected'); $('style-nav').classList.remove('selected');
     if (!library) await loadBlog(blogs[0].id); else renderLibrary();
     if (!library?.syncedAt) await loadBlog(blogs[0].id, true);
   } catch(e) { toast(e.message, true); }

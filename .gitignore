@@ -19,6 +19,7 @@ library/
 
 # Local configuration, generated assets, logs and build outputs
 tistory.config.json
+ai.settings.json
 output/
 *.log
 coverage/

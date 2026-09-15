@@ -5,19 +5,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="개발 캡처를 모으고, 내 말투로 초안을 작성하고, 글과 사진을 함께 검토하는 H.Dev Studio.">
   <title>H.Dev Studio · 개발 기록 작업실</title>
-  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon.png" type="image/png" sizes="64x64">
   <link rel="stylesheet" href="/styles.css">
   <script type="module" src="/app.js"></script>
 </head>
 <body>
-  <aside class="sidebar">
-    <a class="brand" href="/" aria-label="H.Dev Studio 홈"><span class="brand-icon">h<span>.</span></span><span>H.Dev <strong>Studio</strong></span></a>
-    <button id="new-post" class="new-post"><span aria-hidden="true">＋</span> 새로운 글</button>
+  <button id="sidebar-toggle" class="sidebar-toggle" aria-controls="sidebar" aria-expanded="true" aria-label="사이드바 접기" title="사이드바 접기"><span data-icon="layout"></span></button>
+  <button id="sidebar-scrim" class="sidebar-scrim" aria-label="사이드바 닫기" tabindex="-1" hidden></button>
+  <aside id="sidebar" class="sidebar">
+    <a class="brand" href="/" aria-label="H.Dev Studio 홈"><img class="brand-icon" src="/logo.png" width="42" height="42" alt=""><span>H.Dev <strong>Studio</strong></span></a>
+    <button id="new-post" class="new-post" aria-label="새로운 글" title="새로운 글"><span aria-hidden="true">＋</span><span class="nav-label">새로운 글</span></button>
     <nav aria-label="작업실 메뉴">
-      <button id="studio-nav" class="nav-item selected"><span data-icon="layout"></span> 글 작업실</button>
-      <button id="archive-nav" class="nav-item"><span data-icon="archive"></span> 보관한 글 <span id="archive-count" class="nav-count">0</span></button>
-      <button id="library-nav" class="nav-item"><span data-icon="file"></span> 티스토리 글</button>
-      <button id="style-nav" class="nav-item"><span data-icon="feather"></span> 내 말투</button>
+      <button id="studio-nav" class="nav-item selected" aria-label="글 작업실" title="글 작업실"><span data-icon="layout"></span><span class="nav-label">글 작업실</span></button>
+      <button id="archive-nav" class="nav-item" aria-label="보관한 글" title="보관한 글"><span data-icon="archive"></span><span class="nav-label">보관한 글</span><span id="archive-count" class="nav-count">0</span></button>
+      <button id="library-nav" class="nav-item" aria-label="티스토리 글" title="티스토리 글"><span data-icon="file"></span><span class="nav-label">티스토리 글</span></button>
+      <button id="style-nav" class="nav-item" aria-label="내 말투" title="내 말투"><span data-icon="feather"></span><span class="nav-label">내 말투</span></button>
+      <button id="help-nav" class="nav-item" aria-label="도움말 · AI 연결" title="도움말 · AI 연결"><span data-icon="help"></span><span class="nav-label">도움말 · AI 연결</span></button>
     </nav>
     <div class="recent-heading">최근 작업</div>
     <div id="recent-jobs" class="recent-jobs"></div>
@@ -45,7 +48,7 @@
           <label for="notes">사진에 담기지 않은 이야기 <span>선택</span></label>
           <textarea id="notes" rows="5" maxlength="20000" placeholder="무엇을 만들고 있었나요?&#10;어디서 막혔고, 어떻게 해결했나요?&#10;&#10;짧게 적어도 괜찮아요."></textarea>
         </div>
-        <button id="style-summary" class="style-summary"><span class="style-symbol" data-icon="feather"></span><span><strong>내 말투로</strong><small>편한 도입, 차근차근 설명하는 본문</small></span><span aria-hidden="true">›</span></button>
+        <button id="style-summary" class="style-summary"><span class="style-symbol" data-icon="feather"></span><span><strong>내가 설정한 말투로</strong><small>말투 직접 수정 · 참고 블로그 최대 3개</small></span><span aria-hidden="true">›</span></button>
         <button id="generate" class="button primary generate-button" disabled><span data-icon="sparkles"></span><span id="generate-label">내 말투로 초안 만들기</span><span aria-hidden="true">↗</span></button>
         <div id="generation-state" class="generation-state" role="status"><span class="connection-dot"></span><span>작성 연결을 확인하고 있어요</span></div>
       </section>
@@ -83,6 +86,35 @@
       <div class="library-filters"><input id="post-search" type="search" placeholder="제목이나 내용으로 글 찾기" aria-label="기존 글 검색"><select id="post-category" aria-label="카테고리 필터"><option value="">모든 카테고리</option></select><span id="public-post-count">공개 글 0개</span></div>
       <p id="library-warning" class="library-warning" role="status" hidden></p>
       <div id="public-posts" class="public-posts"></div>
+    </div>
+  </section>
+
+  <section id="style-page" class="style-page" aria-labelledby="style-heading" hidden>
+    <div class="style-content">
+      <header class="style-heading"><div><p class="workspace-kicker"><span class="small-dot"></span> 글쓰기 설정</p><h1 id="style-heading">내 글에 어울리는 말투.</h1><p>좋아하는 블로그를 참고하고, 나에게 맞게 다듬어 보세요.</p></div><button id="style-back" class="button secondary">작업실로 돌아가기</button></header>
+      <div class="style-layout">
+        <section class="style-sources" aria-labelledby="style-sources-heading">
+          <div class="panel-heading"><h2 id="style-sources-heading">참고할 블로그</h2><span class="counter">최대 3개</span></div>
+          <p class="style-help">공개 블로그나 글 주소를 입력하세요. 블로그마다 본문을 최대 3개 읽고 말투와 글의 흐름을 분석해요.</p>
+          <form id="style-analyze-form">
+            <label for="style-url-1">첫 번째 블로그</label><input id="style-url-1" type="url" maxlength="2048" placeholder="https://my-blog.tistory.com">
+            <label for="style-url-2">두 번째 블로그 <span>선택</span></label><input id="style-url-2" type="url" maxlength="2048" placeholder="https://blog.naver.com/my-blog">
+            <label for="style-url-3">세 번째 블로그 <span>선택</span></label><input id="style-url-3" type="url" maxlength="2048" placeholder="https://내가-좋아하는-블로그.com">
+            <button id="analyze-style" class="button secondary" type="submit"><span data-icon="sparkles"></span> 블로그 말투 분석하기</button>
+          </form>
+          <p class="style-help style-privacy">공개 본문을 <span id="style-ai-provider">Codex</span>로 분석하며 계정 사용량을 사용해요. 본문을 읽을 수 없는 블로그는 분석 결과에 안내합니다.</p>
+          <div id="style-analysis-status" class="style-analysis-status" role="status"></div>
+          <ul id="style-warnings" class="style-warnings"></ul>
+          <details id="style-evidence" hidden><summary>분석에 참고한 글</summary><ul id="style-source-list"></ul></details>
+        </section>
+        <section class="style-editor-panel" aria-labelledby="style-editor-heading">
+          <div class="panel-heading"><h2 id="style-editor-heading"><span data-icon="feather"></span> 나의 글쓰기 지침</h2><span id="style-save-state" class="counter" role="status">불러오는 중</span></div>
+          <p class="style-help">어미, 문장 길이, 도입과 마무리 방식을 자유롭게 적어주세요. 저장한 지침은 다음 초안 생성부터 적용돼요.</p>
+          <label class="sr-only" for="style-profile">말투 지침</label><textarea id="style-profile" maxlength="20000" spellcheck="false" placeholder="예: 편한 존댓말을 사용해요. 한 문장은 짧게 쓰고, 시도한 과정과 결과를 차근차근 설명해요."></textarea>
+          <div class="style-editor-footer"><span id="style-character-count">0 / 20,000자</span><button id="reload-style" class="text-button" hidden>최신 저장본 불러오기</button><button id="save-style" class="button primary"><span data-icon="save"></span> 말투 저장</button></div>
+          <section id="style-result" class="style-result" hidden><h3>블로그에서 분석한 말투</h3><p class="style-help">결과를 읽고 지침에 가져온 뒤, 원하는 표현으로 수정해 보세요.</p><pre id="style-result-text"></pre><button id="apply-style-result" class="button secondary">이 결과로 지침 바꾸기</button><button id="undo-style-result" class="text-button" hidden>가져오기 전으로 되돌리기</button></section>
+        </section>
+      </div>
     </div>
   </section>
 
