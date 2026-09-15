@@ -1,8 +1,26 @@
 # H.Dev Studio
 
-<img src="web/logo.png" width="96" height="96" alt="노트에 글을 쓰는 오리 로고">
+<p align="center">
+  <img src="docs/assets/hero.png" width="100%" alt="개발 캡처와 메모를 글로 정리하는 오리와 Codex·Claude 선택을 표현한 H.Dev Studio 콘셉트 일러스트">
+</p>
 
-개발 캡처와 메모로 내 말투의 초안을 만들고, 편집·미리보기 후 티스토리에 발행하는 Windows 앱입니다.
+<p align="center">
+  <strong>캡처에 담긴 개발 과정을, 내 말투의 블로그 글로.</strong>
+</p>
+
+<p align="center">
+  Windows x64 · Codex / Claude Code CLI · Tistory
+</p>
+
+개발 캡처와 메모로 초안을 만들고, 편집·미리보기 후 직접 검토한 글을 티스토리에 발행하는 Windows 앱입니다.
+
+> 대표 이미지는 제품 콘셉트 일러스트입니다. 아래는 실제 앱 화면입니다.
+
+## 실제 화면
+
+<p align="center">
+  <img src="docs/assets/workspace.png" width="100%" alt="사진 업로드, 주제·메모 입력, 초안 미리보기와 보관·발행 기능이 있는 H.Dev Studio 글 작업실">
+</p>
 
 ## Windows 앱 다운로드
 
