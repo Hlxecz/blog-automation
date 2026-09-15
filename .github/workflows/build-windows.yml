@@ -1,0 +1,36 @@
+name: Build Windows EXE
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run setup
+      - run: npm run release:check
+      - run: npm test
+      - run: npm run test:desktop
+      - run: npm run build:exe
+      - uses: actions/upload-artifact@v7
+        with:
+          name: hdev-studio-windows-${{ github.run_number }}
+          path: |
+            dist/*/HDev-Studio-*-win-x64.exe
+            dist/*/SHA256SUMS.txt
+            dist/*/release.json
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
