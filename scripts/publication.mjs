@@ -3,6 +3,7 @@ import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { load } from 'cheerio';
 import { buildPreview } from './blog.mjs';
+import { manifestImage } from '../web/draft-model.js';
 
 const read = file => JSON.parse(fs.readFileSync(file, 'utf8'));
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -35,7 +36,7 @@ export function createPublications({ adapter, blogUrl }) {
     if (draft.tags.length > 10 || draft.tags.some(t=>!t.trim() || t.length>50)) reject('태그는 빈 값 없이 10개 이하, 태그당 50자 이하로 정리해 주세요.');
     if (new Set(draft.tags.map(t=>t.trim())).size !== draft.tags.length) reject('중복된 태그를 정리한 뒤 다시 눌러 주세요.');
     for (const name of usedImages) {
-      if (hash(fs.readFileSync(path.join(directory,'images',name))) !== manifest.images.find(i=>i.name===name).sha256) reject('보관한 사진이 변경됐습니다. 초안을 다시 확인해 주세요.');
+      if (hash(fs.readFileSync(path.join(directory,'images',name))) !== manifestImage(manifest,name).sha256) reject('보관한 사진이 변경됐습니다. 초안을 다시 확인해 주세요.');
     }
     const attemptId=randomUUID(), snapshot=path.join(directory,'publication',attemptId);
     fs.mkdirSync(path.join(snapshot,'images'),{recursive:true});
@@ -55,7 +56,7 @@ export function createPublications({ adapter, blogUrl }) {
     })).then(result=>{
       const url=new URL(result.url);
       if (url.origin !== new URL(blogUrl).origin || !/^\/(\d+|entry\/[^/]+)\/?$/.test(url.pathname) ||
-          result.title!==draft.title || !result.verifiedAt || !result.evidence?.public || !result.evidence?.body || !result.evidence?.images)
+          result.title!==draft.title || !result.verifiedAt || !result.evidence?.public || !result.evidence?.body || !result.evidence?.images || (draft.cover && result.evidence?.cover !== true))
         throw new Error('발행된 글의 제목·본문·사진을 확인하지 못했습니다.');
       record={...record,phase:'published',message:'티스토리에 발행했어요.',url:url.href,verifiedAt:result.verifiedAt,evidence:result.evidence};
       save(file,record); save(path.join(snapshot,'published-receipt.json'),record);
@@ -93,6 +94,15 @@ export function verifyPublishedHtml(html,draft,uploaded) {
   const $=load(html); $('script,style,noscript').remove();
   const title=$('meta[property="og:title"]').attr('content') || $('h1').first().text();
   if (title.trim()!==draft.title.trim()) return false;
+  if (draft.cover) {
+    const markup = uploaded[draft.cover];
+    if (!markup) return false;
+    const source = load(markup,null,false)('img').first().attr('src');
+    let representative = $('meta[property="og:image"]').attr('content') || '';
+    // Tistory may wrap the photo URL in a resized-thumbnail URL's fname query.
+    for (let i=0;i<2;i++) { try { representative=decodeURIComponent(representative); } catch { break; } }
+    if (!source || !representative.includes(new URL(source).pathname)) return false;
+  }
   const text=normalize($('body').text());
   const pieces=draft.blocks.flatMap(b=>b.type==='image'?[]:b.type==='list'?b.items:b.type==='table'?[...b.headers,...b.rows.flat()]:[b.text]);
   if (pieces.some(p=>!text.includes(normalize(p)))) return false;

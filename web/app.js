@@ -1,3 +1,5 @@
+import { articleBlocks } from './draft-model.js';
+
 const $ = id => document.getElementById(id);
 const escape = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]);
 const icons = {
@@ -89,7 +91,7 @@ async function refreshJobs() {
 }
 async function selectJob(id) {
   showWorkspace();
-  if (switching || publishStarting || deleting) return;
+  if (switching || publishStarting || deleting || uploadBusy) return;
   switching = true;
   try {
     await saveAll(); clearTimeout(pollTimer);
@@ -228,6 +230,7 @@ function updateControls() {
   $('generate').disabled = running || !hasImages;
   $('manual-start').disabled = running || !hasImages;
   $('save-all').disabled = running;
+  for (const id of ['choose-cover','upload-cover','reset-cover','cover-file-input']) $(id).disabled = running || !draft;
   $('delete-current').hidden = !current;
   $('delete-current').disabled = running || switching;
   const publication=current?.publication;
@@ -259,12 +262,62 @@ function updateControls() {
   editBlocks.forEach((el,index)=>{const buttons=el.querySelectorAll('.edit-block-header button');buttons[0].disabled=running||index===0;buttons[1].disabled=running||index===editBlocks.length-1;});
 }
 function updateFooter() {
-  $('word-count').textContent = draft ? `${draft.blocks.reduce((n,b)=>n+(b.text||b.items?.join('')||b.caption||'').replace(/\s/g,'').length,0).toLocaleString()}자 · 사진 ${draft.blocks.filter(b=>b.type==='image').length}장` : '사진과 글이 함께 표시됩니다';
+  $('word-count').textContent = draft ? `${draft.blocks.reduce((n,b)=>n+(b.text||b.items?.join('')||b.caption||'').replace(/\s/g,'').length,0).toLocaleString()}자 · 사진 ${articleBlocks(draft).filter(b=>b.type==='image').length}장` : '사진과 글이 함께 표시됩니다';
 }
-const imageURL = name => (current?.draftImages.find(i=>i.name===name) || current?.images.find(i=>i.name===name))?.url || '';
+const imageURL = name => (current?.draftImages.find(i=>i.name===name) || current?.coverImages?.find(i=>i.name===name) || current?.images.find(i=>i.name===name))?.url || '';
+function renderCover() {
+  $('cover-section').hidden = !draft;
+  if (!draft) return;
+  const name = draft.cover || draft.blocks.find(block=>block.type==='image')?.file;
+  const preview = $('cover-preview'); preview.replaceChildren();
+  if (name) { const img = document.createElement('img'); img.src = imageURL(name); img.alt = '선택한 글 표지'; preview.append(img); }
+  else preview.textContent = '표지 없음';
+  $('cover-badge').textContent = draft.cover ? '직접 선택' : '자동';
+  $('cover-description').textContent = draft.cover ? '이 사진을 표지로 보관했어요.' : name ? '첫 번째 본문 사진을 사용해요.' : '글을 보여줄 표지 사진을 추가해 보세요.';
+  $('reset-cover').hidden = !draft.cover;
+}
+async function changeCover(name, file) {
+  if (!draft || busy() || switching) return;
+  const id = current.id;
+  try {
+    await saveAll();
+    if (busy() || current?.id !== id) return;
+    uploadBusy = true; updateControls();
+    if (file) {
+      if (!['image/png','image/jpeg','image/webp'].includes(file.type) || file.size > 10*1024*1024) throw new Error('표지는 PNG, JPG, WebP 형식의 10MB 이하 사진을 선택해 주세요.');
+      const bitmap = await createImageBitmap(file); bitmap.close();
+      const oldNames = new Set(current.coverImages?.map(i=>i.name));
+      current = await api(`/api/jobs/${id}/covers?name=${encodeURIComponent(file.name)}`,{method:'POST',body:file,headers:{'Content-Type':file.type}});
+      name = current.coverImages.find(i=>!oldNames.has(i.name))?.name;
+      if (!name) throw new Error('업로드한 표지를 찾지 못했습니다.');
+    }
+    const next = structuredClone(draft);
+    if (name) next.cover = name; else delete next.cover;
+    draftSave = api(`/api/jobs/${id}/draft`,{method:'PUT',json:{draft:next,review:$('review-notes').value}});
+    current = await draftSave; draft = structuredClone(current.draft); draftDirty = false;
+    renderDraft(); saveStatus('표지까지 이 PC에 보관됨'); await refreshJobs();
+    toast(name ? '선택한 표지를 보관했어요.' : '첫 번째 본문 사진을 사용하는 자동 표지로 바꿨어요.');
+  } catch(e) { toast(e.message,true); }
+  finally { uploadBusy = false; updateControls(); }
+}
+$('choose-cover').onclick = () => {
+  if (!draft || busy()) return;
+  const images = [...new Map([...(current.images || []),...(current.coverImages || []),...current.draftImages].map(i=>[i.name,i])).values()];
+  const box = document.createElement('div'); box.className = 'photo-picker cover-picker';
+  if (!images.length) box.textContent = '표지 업로드로 사진을 먼저 추가해 주세요.';
+  for (const [index,image] of images.entries()) {
+    const b = document.createElement('button'); b.classList.toggle('selected',draft.cover === image.name); b.setAttribute('aria-pressed',String(draft.cover === image.name)); b.setAttribute('aria-label',`${index+1}번 사진을 표지로 선택`);
+    b.innerHTML = `<img src="${escape(imageURL(image.name))}" alt="${escape(image.label || `사진 ${index+1}`)}"><span>${draft.cover===image.name ? '✓ 선택한 표지' : image.label ? escape(image.label) : `사진 ${index+1}`}</span>`;
+    b.onclick = () => { $('modal').close(); changeCover(image.name); }; box.append(b);
+  }
+  modal('표지로 사용할 사진',box);
+};
+$('upload-cover').onclick = () => { if (!busy()) $('cover-file-input').click(); };
+$('cover-file-input').onchange = e => { const file = e.target.files[0]; e.target.value = ''; if (file) changeCover(null,file); };
+$('reset-cover').onclick = () => changeCover(null);
 function renderPreview() {
   if (!draft) return;
-  const content = draft.blocks.map(b => {
+  const content = articleBlocks(draft).map(b => {
     if (b.type==='heading') return `<h2>${escape(b.text)}</h2>`;
     if (b.type==='paragraph') return `<p>${escape(b.text).replace(/\n/g,'<br>')}</p>`;
     if (b.type==='code') return `<pre><code>${escape(b.text)}</code></pre>`;
@@ -305,7 +358,7 @@ function renderDraft() {
   $('empty-draft').hidden=!!draft; $('article-preview').hidden=!draft||mode!=='preview'; $('article-editor').hidden=!draft||mode!=='edit';
   $('preview-view').classList.toggle('active',mode==='preview'); $('edit-view').classList.toggle('active',mode==='edit');
   $('preview-view').setAttribute('aria-pressed',mode==='preview'); $('edit-view').setAttribute('aria-pressed',mode==='edit');
-  if(draft){renderPreview();renderEditor();} updateFooter(); updateControls();
+  renderCover(); if(draft){renderPreview();renderEditor();} updateFooter(); updateControls();
 }
 $('draft-title').oninput=()=>{draft.title=$('draft-title').value;markDraft();};
 $('draft-tags').oninput=()=>{draft.tags=$('draft-tags').value.split(',').map(t=>t.trim().replace(/^#/, '')).filter(Boolean);markDraft();};

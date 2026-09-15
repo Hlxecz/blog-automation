@@ -1,9 +1,9 @@
 {
-  "version": "0.3.3",
-  "summary": "로컬 글 용량 확인과 원본·초안·이력 전체 삭제",
-  "artifact": "dist/0.3.3/win-unpacked/resources/app.asar",
-  "archiveSha256": "13e22393f26d66962f2b1655e1f20c0b3fa8338f6f7ad54a5aa4c9641f0cb108",
-  "recoveredAt": "2026-09-15T09:04:56.306Z",
+  "version": "0.3.4",
+  "summary": "표지 선택·업로드와 대표 이미지 확인",
+  "artifact": "dist/0.3.4/win-unpacked/resources/app.asar",
+  "archiveSha256": "ad6979e9ae5fba3fd26e380e4bf34895f59093397cea6b7672c66e0415559763",
+  "recoveredAt": "2026-09-15T09:04:56.780Z",
   "files": [
     {
       "path": "desktop/assets/icon.ico",
@@ -31,15 +31,15 @@
     },
     {
       "path": "desktop/publish.mjs",
-      "bytes": 14970,
-      "sha256": "92a2698741ce61c22aaf94770b90a522ee8defd7aac91fa0b5cdd895ffeec824",
-      "gitContentSha256": "92a2698741ce61c22aaf94770b90a522ee8defd7aac91fa0b5cdd895ffeec824"
+      "bytes": 15230,
+      "sha256": "5c1bc5a22d99dbdeebbc871d2eba8c5980768a43ed9f0adfad28236383122780",
+      "gitContentSha256": "5c1bc5a22d99dbdeebbc871d2eba8c5980768a43ed9f0adfad28236383122780"
     },
     {
       "path": "scripts/blog.mjs",
-      "bytes": 13662,
-      "sha256": "8776236191c49457453467331557c5fdfa53c57b430281006a28e3a4da0bf585",
-      "gitContentSha256": "8776236191c49457453467331557c5fdfa53c57b430281006a28e3a4da0bf585"
+      "bytes": 14062,
+      "sha256": "35a7623cb86e2f7d9b880321a2ef1acddb4c9d26094e4cfacc45b92da8d0ceec",
+      "gitContentSha256": "35a7623cb86e2f7d9b880321a2ef1acddb4c9d26094e4cfacc45b92da8d0ceec"
     },
     {
       "path": "scripts/generate.mjs",
@@ -49,15 +49,15 @@
     },
     {
       "path": "scripts/publication.mjs",
-      "bytes": 7226,
-      "sha256": "0f2bc4744e750205e48a07c7df468506cc34007a14fa3745fd60e99c4c967666",
-      "gitContentSha256": "0f2bc4744e750205e48a07c7df468506cc34007a14fa3745fd60e99c4c967666"
+      "bytes": 7842,
+      "sha256": "5f6c16761ce35b4fd8c33bf3fb718d52e4e28215a9fc7da208f738e66c26e3c9",
+      "gitContentSha256": "5f6c16761ce35b4fd8c33bf3fb718d52e4e28215a9fc7da208f738e66c26e3c9"
     },
     {
       "path": "scripts/server.mjs",
-      "bytes": 18896,
-      "sha256": "b2ac9e26481ba5588b3f7a8a575831d9e0bd41bd11c0d7cbf20ef822dc20c277",
-      "gitContentSha256": "b2ac9e26481ba5588b3f7a8a575831d9e0bd41bd11c0d7cbf20ef822dc20c277"
+      "bytes": 21679,
+      "sha256": "3fb0ec9309ce5696235bdc6fe0ad04df06180fdd74f9571c6bce46f0f8d1f52a",
+      "gitContentSha256": "3fb0ec9309ce5696235bdc6fe0ad04df06180fdd74f9571c6bce46f0f8d1f52a"
     },
     {
       "path": "scripts/storage.mjs",
@@ -73,9 +73,15 @@
     },
     {
       "path": "web/app.js",
-      "bytes": 35013,
-      "sha256": "0f0195a083ae985ad4326c6c0679ada58e043912e968a5191d05ce912ad9d985",
-      "gitContentSha256": "154e35a7c70f56753badbcbbaf3c471ae67aabf42332946a350c1698e124b610"
+      "bytes": 38872,
+      "sha256": "1ce9fc3cd6d60d82b9faadb8c8abb0060423e7149c1fcafa0b244a37e89bc724",
+      "gitContentSha256": "a4a52f2e12ea79ca6820b3fdaa0135daa1d85cfd1882d4c6b7435762de411aac"
+    },
+    {
+      "path": "web/draft-model.js",
+      "bytes": 628,
+      "sha256": "7f6d0470c8714e40510832373417f1c6b783a449eb715e6ac4e617b96957a855",
+      "gitContentSha256": "7f6d0470c8714e40510832373417f1c6b783a449eb715e6ac4e617b96957a855"
     },
     {
       "path": "web/favicon.svg",
@@ -85,15 +91,15 @@
     },
     {
       "path": "web/index.html",
-      "bytes": 10468,
-      "sha256": "15b2ebd1c38c1d68fcf9dd04dde8ed44c73fe81995601093fdd2dfb941e3754b",
-      "gitContentSha256": "3b47b8d9513b0761215032881f2cfdc88908d3c3ceb9c2b425ba7e932dacda47"
+      "bytes": 11363,
+      "sha256": "1077d6f532d0fab2635921809d5c033b7edf57d53a8635d73f57e908f4b7c5d6",
+      "gitContentSha256": "a3131b175ea71dde62bd0df036a163e2913bd817f45cabf78b0385a8774ca887"
     },
     {
       "path": "web/styles.css",
-      "bytes": 25561,
-      "sha256": "be0d7533fd129381b048f6fdbf5b677b55479b2d175a7bc3ce37962d771900ee",
-      "gitContentSha256": "af817f045d67feaccdae8cd21bbf85ae230b0a81c056a7b1a8dcb47567676dd0"
+      "bytes": 26707,
+      "sha256": "c594f4d1c9a5954abf550089107f28005d460f98d00835a24943f2a827e80684",
+      "gitContentSha256": "46b3973164c41e9993028f9f7e73fe43fe2450b9bc3b4e8240d7b66d6b22726f"
     }
   ],
   "integrityVerified": true,
