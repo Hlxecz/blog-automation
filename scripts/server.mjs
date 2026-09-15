@@ -1,18 +1,20 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
-import { randomUUID, randomBytes } from 'node:crypto';
+import { randomUUID, randomBytes, createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { newJob, readyJob, prepareJob, renderDraft, buildPreview, listJobs } from './blog.mjs';
 import { generate, checkCodex } from './generate.mjs';
 import { createLibrary } from './tistory.mjs';
 import { createPublications, draftDigest } from './publication.mjs';
 import { jobStorage, deleteJobStorage } from './storage.mjs';
+import { manifestImage } from '../web/draft-model.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const json = file => JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, ''));
 const write = (file, value) => { const temp = `${file}.tmp`; fs.writeFileSync(temp, JSON.stringify(value, null, 2)); fs.renameSync(temp, file); };
 const exists = fs.existsSync;
+const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 const fail = (condition, message, status = 400) => { if (!condition) throw Object.assign(new Error(message), { status }); };
 const MIME = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.js': 'text/javascript', '.css': 'text/css', '.html': 'text/html' };
 
@@ -58,6 +60,7 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
     return { id, title: meta.title || '', notes: fs.readFileSync(path.join(dir, 'notes.md'), 'utf8'),
       updatedAt: meta.updatedAt, images: imageNames(dir).map(name => ({ name, label: meta.labels?.[name] || name, url: `/api/jobs/${id}/images/${encodeURIComponent(name)}` })),
       draft, draftImages: savedInput?.images.map(i => ({ name: i.name, url: `/api/jobs/${id}/draft-images/${encodeURIComponent(i.name)}` })) || [],
+      coverImages: [...new Set([...(meta.coverUploads || []), ...(savedInput?.coverImages || []).map(i => i.name)])].map(name => ({ name, label:meta.labels?.[name] || '표지 사진', url:`/api/jobs/${id}/${savedInput?.coverImages?.some(i=>i.name===name) ? 'draft-images' : 'images'}/${encodeURIComponent(name)}` })),
       review: saved && exists(path.join(saved, 'review.md')) ? fs.readFileSync(path.join(saved, 'review.md'), 'utf8') : '',
       analysis: saved && exists(path.join(saved, 'analysis.md')) ? fs.readFileSync(path.join(saved, 'analysis.md'), 'utf8') : '',
       generation: state, changed, transfer: meta.transfer || null,
@@ -72,7 +75,27 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
   }
   function persistDraft(id, directory, draft, review = '', analysis = '') {
     const manifest = json(path.join(directory, 'manifest.json'));
-    buildPreview(draft, manifest); // Validate before overwriting the previous draft.
+    let coverSource;
+    if (draft?.cover != null && !manifestImage(manifest,draft.cover)) {
+      fail(typeof draft.cover === 'string' && path.basename(draft.cover) === draft.cover && !/[\\/]/.test(draft.cover) && /\.(png|jpe?g|webp)$/i.test(draft.cover), '표지 사진 경로가 올바르지 않습니다.');
+      const images = path.join(jobDir(id),'images');
+      fail(!fs.lstatSync(images).isSymbolicLink(), '표지 사진 폴더가 올바르지 않습니다.');
+      coverSource = path.join(images,draft.cover);
+      fail(exists(coverSource) && fs.lstatSync(coverSource).isFile() && !fs.lstatSync(coverSource).isSymbolicLink(), '표지 사진을 찾을 수 없습니다.');
+      const bytes = fs.readFileSync(coverSource);
+      manifest.coverImages = [...(manifest.coverImages || []), {name:draft.cover,sha256:sha(bytes),bytes:bytes.length}];
+    }
+    const {usedImages} = buildPreview(draft, manifest); // Validate before overwriting the previous draft.
+    for (const name of usedImages) {
+      const source = coverSource && name === draft.cover ? coverSource : path.join(directory,'images',name);
+      fail(sha(fs.readFileSync(source)) === manifestImage(manifest,name).sha256, '보관한 사진이 변경됐습니다. 다시 확인해 주세요.');
+    }
+    if (coverSource) {
+      const destination = path.join(directory,'images',draft.cover);
+      if (!exists(destination)) fs.copyFileSync(coverSource,destination,fs.constants.COPYFILE_EXCL);
+      fail(!fs.lstatSync(destination).isSymbolicLink() && sha(fs.readFileSync(destination)) === manifestImage(manifest,draft.cover).sha256, '보관한 표지 사진이 변경됐습니다.');
+      write(path.join(directory,'manifest.json'),manifest);
+    }
     const file = path.join(directory, 'draft.json');
     if (exists(file)) {
       fs.mkdirSync(path.join(directory, 'history'), { recursive: true });
@@ -169,10 +192,11 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
           saveMeta(dir, { title: b.title });
           return sendJson(res, readJob(id));
         }
-        if (action === 'images' && req.method === 'POST') {
+        if (['images','covers'].includes(action) && req.method === 'POST') {
           const bytes = await readBody(req, 10 * 1024 * 1024);
           mutableJob(id);
-          const names = imageNames(dir); fail(names.length < 20, '한 글에 사진을 최대 20장까지 올릴 수 있습니다.');
+          const meta = metaFor(dir), coverOnly = action === 'covers';
+          const names = coverOnly ? (meta.coverUploads || []) : imageNames(dir); fail(names.length < 20, coverOnly ? '표지 후보는 한 글에 최대 20장까지 보관할 수 있습니다.' : '한 글에 사진을 최대 20장까지 올릴 수 있습니다.');
           let ext;
           if (bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]))) ext = '.png';
           else if (bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255) ext = '.jpg';
@@ -180,9 +204,8 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
           fail(ext, 'PNG, JPEG 또는 WebP 사진을 선택해 주세요.', 415);
           const name = `${randomUUID()}${ext}`;
           fs.writeFileSync(path.join(dir, 'images', name), bytes, { flag: 'wx' });
-          write(path.join(dir, 'order.json'), [...names, name]);
-          const meta = metaFor(dir);
-          saveMeta(dir, { labels: { ...meta.labels, [name]: (url.searchParams.get('name') || name).slice(0,200) } });
+          if (!coverOnly) write(path.join(dir, 'order.json'), [...names, name]);
+          saveMeta(dir, { ...(coverOnly ? {coverUploads:[...names,name]} : {}), labels: { ...meta.labels, [name]: (url.searchParams.get('name') || name).slice(0,200) } });
           return sendJson(res, readJob(id), 201);
         }
         if ((action.startsWith('images/') || action.startsWith('draft-images/')) && req.method === 'GET') {
@@ -196,6 +219,7 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
           fail(active.size === 0, '다른 글을 작성 중입니다. 완료된 뒤 시도해 주세요.', 409);
           fail(imageNames(dir).length > 0, '먼저 개발 캡처를 올려 주세요.');
           const meta = metaFor(dir), previousDirectory = meta.directory || null;
+          const previousDraft = previousDirectory && exists(path.join(previousDirectory,'draft.json')) ? json(path.join(previousDirectory,'draft.json')) : null;
           const directory = prepare(id);
           const styleFile = path.resolve(root, c.styleProfile);
           fail(exists(styleFile), '말투 참고 자료가 없습니다. 설정에서 기존 글의 말투를 먼저 준비해 주세요.');
@@ -209,6 +233,9 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
               const blocked = new Set(result.sensitiveImages);
               fail(Array.isArray(result.draft?.blocks), '본문이 생성되지 않았습니다.');
               result.draft.blocks = result.draft.blocks.filter(b => b.type !== 'image' || !blocked.has(b.file));
+              // Cover selection belongs to the user, and survives regeneration.
+              delete result.draft.cover;
+              if (previousDraft?.cover && !blocked.has(previousDraft.cover)) result.draft.cover = previousDraft.cover;
               const labels = metaFor(dir).labels || {};
               const review = result.review + (blocked.size ? '\n\n민감한 정보가 보일 수 있어 제외한 사진:\n' + [...blocked].map(name => labels[name] || name).join('\n') : '');
               persistDraft(id, directory, result.draft, review, result.analysis);
@@ -237,7 +264,7 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
         }
         fail(false, '요청한 기능을 찾을 수 없습니다.', 404);
       }
-      const staticFiles = { '/': 'index.html', '/app.js': 'app.js', '/styles.css': 'styles.css', '/favicon.svg': 'favicon.svg' };
+      const staticFiles = { '/': 'index.html', '/app.js': 'app.js', '/draft-model.js':'draft-model.js', '/styles.css': 'styles.css', '/favicon.svg': 'favicon.svg' };
       if (req.method === 'GET' && Object.hasOwn(staticFiles, route)) return sendFile(res, path.join(webRoot, staticFiles[route]));
       fail(false, '페이지를 찾을 수 없습니다.', 404);
     } catch (error) {

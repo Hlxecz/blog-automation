@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { articleBlocks, manifestImage } from '../web/draft-model.js';
 
 const PROJECT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const IMAGE = /\.(png|jpe?g|webp)$/i;
@@ -151,8 +152,12 @@ export function buildPreview(draft, manifest) {
   check(Array.isArray(draft.blocks) && draft.blocks.length, 'blocks가 비어 있습니다.');
   check(Array.isArray(draft.tags) && draft.tags.every(t => typeof t === 'string'), 'tags는 문자열 배열이어야 합니다.');
   const imageMap = new Map(manifest.images.map(i => [i.name, i]));
+  if (draft.cover != null) {
+    check(typeof draft.cover === 'string' && draft.cover === path.basename(draft.cover) && !/[\\/]/.test(draft.cover) && manifestImage(manifest, draft.cover), '표지 사진을 찾을 수 없습니다. 다시 선택해 주세요.');
+    imageMap.set(draft.cover, manifestImage(manifest, draft.cover));
+  }
   const usedImages = new Set();
-  const blocks = draft.blocks.map(block => {
+  const blocks = articleBlocks(draft).map(block => {
     check(block && typeof block === 'object', '각 block은 객체여야 합니다.');
     switch (block.type) {
       case 'heading': return `<h2>${escapeHtml(requiredText(block.text, 'heading.text'))}</h2>`;
@@ -191,7 +196,7 @@ export function renderDraft(directory) {
   const manifest = readJson(path.join(dest, 'manifest.json'));
   const { html, usedImages } = buildPreview(draft, manifest);
   for (const name of usedImages) {
-    const item = manifest.images.find(i => i.name === name);
+    const item = manifestImage(manifest, name);
     check(sha(fs.readFileSync(path.join(dest, 'images', name))) === item.sha256, `보관 이미지가 변경됐습니다: ${name}`);
   }
   fs.writeFileSync(path.join(dest, 'preview.html'), html);

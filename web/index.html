@@ -53,6 +53,14 @@
       <section class="draft-panel" aria-labelledby="draft-heading">
         <div class="panel-heading draft-toolbar"><h2 id="draft-heading"><span data-icon="file"></span> 글 미리보기</h2><div class="view-switch" role="group" aria-label="글 보기 모드"><button id="edit-view" aria-pressed="false">편집</button><button id="preview-view" class="active" aria-pressed="true">미리보기</button></div></div>
         <div id="changed-banner" class="changed-banner" hidden>자료가 바뀌었어요. 기존 글은 보관되어 있으며, 다시 생성하면 새 자료를 반영합니다.</div>
+        <section id="cover-section" class="cover-section" aria-label="글 표지" hidden>
+          <div id="cover-preview" class="cover-preview"></div>
+          <div class="cover-content"><h3>표지 · 대표 이미지 <span id="cover-badge">자동</span></h3><p id="cover-description">첫 번째 본문 사진을 사용해요.</p>
+            <div class="cover-actions"><button id="choose-cover" class="button secondary">사진에서 선택</button><button id="upload-cover" class="button secondary">표지 업로드</button><button id="reset-cover" class="text-button" hidden>선택 해제</button></div>
+            <small>선택한 표지는 본문 맨 위에 배치돼요. PNG·JPG·WebP, 10MB 이하</small>
+          </div>
+          <input id="cover-file-input" type="file" class="sr-only" accept="image/png,image/jpeg,image/webp" aria-label="표지 사진 파일">
+        </section>
         <div class="paper-area">
           <div id="empty-draft" class="empty-draft"><div class="empty-mark" aria-hidden="true"><span data-icon="feather"></span></div><span class="paper-label">아직 쓰이지 않은 이야기</span><h3>작업의 순간들이<br>하나의 글이 될 거예요.</h3><p>사진을 올리고 초안 만들기를 눌러보세요.<br>제목부터 설명, 사진 배치까지 함께 정리해요.</p><div class="empty-lines" aria-hidden="true"><i></i><i></i><i></i></div><button id="manual-start" class="text-button" disabled>직접 작성하기</button></div>
           <article id="article-preview" class="article-preview" hidden></article>

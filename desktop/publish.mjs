@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { publicationHtml, verifyPublishedHtml } from '../scripts/publication.mjs';
 import { parseFeed } from '../scripts/tistory.mjs';
+import { articleBlocks } from '../web/draft-model.js';
 
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const error = message => { throw new Error(message); };
@@ -146,7 +147,9 @@ export function createTistoryPublisher({ openWindow, fetchPublic = fetch, onDryR
       if (!await evalEditor('empty')) error('티스토리에 작성 중이던 내용이 있습니다. 해당 내용을 보관하고 빈 글쓰기 화면으로 돌아온 뒤 다시 시도해 주세요.');
 
       const uploaded = {};
-      const files = [...new Set(draft.blocks.filter(b => b.type === 'image').map(b => b.file))];
+      // Tistory's documented default representative image is the first image.
+      // Keep the selected cover first in both upload order and the final body.
+      const files = [...new Set(articleBlocks(draft).filter(b => b.type === 'image').map(b => b.file))];
       if (files.length) {
         wc.debugger.attach('1.3');
         await wc.debugger.sendCommand('Page.enable');
@@ -210,7 +213,7 @@ export function createTistoryPublisher({ openWindow, fetchPublic = fetch, onDryR
       }
       onProgress('verifying', '공개된 글의 제목·본문·사진을 확인하고 있어요.');
       const url = await waitForPublishedPost({ blogUrl, draft, uploaded, candidateUrl: panel.url, fetchPublic });
-      return { url, title: draft.title, verifiedAt: new Date().toISOString(), evidence: { public: true, body: true, images: true } };
+      return { url, title: draft.title, verifiedAt: new Date().toISOString(), evidence: { public: true, body: true, images: true, ...(draft.cover ? {cover:true} : {}) } };
     } catch (err) {
       if (!submitted && !win.isDestroyed()) win.setTitle(`발행 중단 · ${err.message}`);
       throw err;
