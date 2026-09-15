@@ -58,7 +58,7 @@ EXE 실행, 사진 업로드, 초안 열기·편집·표지, 자료 폴더 열�
 
 ## GitHub에 다음 변경 올리기
 
-저장소는 [Hlxecz/blog-automation](https://github.com/Hlxecz/blog-automation)이며 비공개로 생성했습니다. `origin`은 이 저장소를 가리킵니다. `v0.3.0`~`v0.3.4`는 배포본의 앱 소스에서 복원한 태그입니다. [복원 범위](HISTORY.md)를 확인하세요.
+저장소는 [Hlxecz/blog-automation](https://github.com/Hlxecz/blog-automation)이며 현재 공개 상태입니다. `origin`은 이 저장소를 가리킵니다. `v0.3.0`~`v0.3.4`는 배포본의 앱 소스에서 복원한 태그입니다. [복원 범위](HISTORY.md)를 확인하세요.
 
 이 프로젝트 폴더 자체를 Git 저장소로 사용합니다. `git rev-parse --show-toplevel`이 드라이브 루트나 다른 프로젝트를 가리키면 먼저 위치를 확인합니다. Git의 소유권 검사를 피하려고 드라이브 전체를 신뢰하도록 설정하지 않습니다.
 
