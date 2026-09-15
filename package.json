@@ -1,0 +1,55 @@
+{
+  "name": "tistory-draft-workflow",
+  "private": true,
+  "version": "0.3.0",
+  "description": "H.Dev Studio - 개발 캡처와 티스토리 글 작업실",
+  "author": "H.Dev",
+  "main": "desktop/main.mjs",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "start": "node scripts/server.mjs",
+    "blog": "node scripts/blog.mjs",
+    "desktop": "electron .",
+    "build:exe": "electron-builder --win portable --x64 --config.directories.output=dist/0.3.0"
+  },
+  "devDependencies": {
+    "electron": "44.3.0",
+    "electron-builder": "26.15.3"
+  },
+  "dependencies": {
+    "cheerio": "1.2.0"
+  },
+  "build": {
+    "appId": "com.hdev.studio",
+    "productName": "H.Dev Studio",
+    "directories": {
+      "output": "dist",
+      "buildResources": "desktop/assets"
+    },
+    "files": [
+      "desktop/**/*",
+      "scripts/**/*",
+      "web/**/*",
+      "docs/WRITING.md",
+      "AGENTS.md",
+      "tistory.config.json",
+      "style/profile.md",
+      "style/samples/source-notes.md",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "desktop/publish.mjs"
+    ],
+    "win": {
+      "target": "portable",
+      "icon": "desktop/assets/icon.ico"
+    },
+    "portable": {
+      "artifactName": "HDev-Studio-${version}-win-x64.exe"
+    }
+  }
+}
