@@ -1,0 +1,104 @@
+{
+  "version": "0.3.0",
+  "summary": "검토한 초안의 사진·본문·태그를 입력하고 한 번의 버튼 클릭으로 공개 발행",
+  "artifact": "dist/win-unpacked/resources/app.asar",
+  "archiveSha256": "cdcd802b9708baf5c39dd6eb4b95d1f3674fe6183b4259b03585b96ba199a43b",
+  "recoveredAt": "2026-09-15T09:04:54.952Z",
+  "files": [
+    {
+      "path": "desktop/assets/icon.ico",
+      "bytes": 21558,
+      "sha256": "45472bc295e56723606dd905aeecb5eeef001674bd531c1c1f59f14cc9b52477",
+      "gitContentSha256": "45472bc295e56723606dd905aeecb5eeef001674bd531c1c1f59f14cc9b52477"
+    },
+    {
+      "path": "desktop/assets/icon.png",
+      "bytes": 5990,
+      "sha256": "c59e2c3156d1aca57b8053793492bf5749db3d0a0b4fc1f4e94a4d93d9b94953",
+      "gitContentSha256": "c59e2c3156d1aca57b8053793492bf5749db3d0a0b4fc1f4e94a4d93d9b94953"
+    },
+    {
+      "path": "desktop/data.mjs",
+      "bytes": 632,
+      "sha256": "abe0e51c8d2681c250b110bb898f6a11e33b3a428a5c14aadeed1aa06f386cef",
+      "gitContentSha256": "abe0e51c8d2681c250b110bb898f6a11e33b3a428a5c14aadeed1aa06f386cef"
+    },
+    {
+      "path": "desktop/main.mjs",
+      "bytes": 8010,
+      "sha256": "b1c0ad33e2c207d093351c5b111c56f49ebc2d66e9ef0a9e33f4c32abd9fbd7f",
+      "gitContentSha256": "b1c0ad33e2c207d093351c5b111c56f49ebc2d66e9ef0a9e33f4c32abd9fbd7f"
+    },
+    {
+      "path": "desktop/publish.mjs",
+      "bytes": 12885,
+      "sha256": "7b0934b071a83477a2d3650692ad97c9d269e5d35c87ef5b76a0bccfbfd89e5f",
+      "gitContentSha256": "7b0934b071a83477a2d3650692ad97c9d269e5d35c87ef5b76a0bccfbfd89e5f"
+    },
+    {
+      "path": "scripts/blog.mjs",
+      "bytes": 13662,
+      "sha256": "8776236191c49457453467331557c5fdfa53c57b430281006a28e3a4da0bf585",
+      "gitContentSha256": "8776236191c49457453467331557c5fdfa53c57b430281006a28e3a4da0bf585"
+    },
+    {
+      "path": "scripts/generate.mjs",
+      "bytes": 6919,
+      "sha256": "a81322d39fec8fa8f11a0e8e1fc23395cca74ac2080f1e5318b97009e47378cc",
+      "gitContentSha256": "a81322d39fec8fa8f11a0e8e1fc23395cca74ac2080f1e5318b97009e47378cc"
+    },
+    {
+      "path": "scripts/publication.mjs",
+      "bytes": 7226,
+      "sha256": "0f2bc4744e750205e48a07c7df468506cc34007a14fa3745fd60e99c4c967666",
+      "gitContentSha256": "0f2bc4744e750205e48a07c7df468506cc34007a14fa3745fd60e99c4c967666"
+    },
+    {
+      "path": "scripts/server.mjs",
+      "bytes": 18282,
+      "sha256": "91d10739ae8209e8673e783f985be412f9fb74f7886fc01c01d0ab891a27f9f8",
+      "gitContentSha256": "91d10739ae8209e8673e783f985be412f9fb74f7886fc01c01d0ab891a27f9f8"
+    },
+    {
+      "path": "scripts/tistory.mjs",
+      "bytes": 6727,
+      "sha256": "650191b87a85e59cd2db7f5931204406148155c4bf84ba8c45acab788783523a",
+      "gitContentSha256": "650191b87a85e59cd2db7f5931204406148155c4bf84ba8c45acab788783523a"
+    },
+    {
+      "path": "web/app.js",
+      "bytes": 30905,
+      "sha256": "37f049344d902397b796db0486ead31f2a2b45a1af44369ca9555060db99510b",
+      "gitContentSha256": "8a5b0fdd874f4a1ed32cb2f92e2523d00afd7af5afad2fb8221d162fd87a30a6"
+    },
+    {
+      "path": "web/favicon.svg",
+      "bytes": 263,
+      "sha256": "51714dd2971359b6f5d076c22ca109a9c51d8bdba600e7a97c783fb7c28688f1",
+      "gitContentSha256": "51714dd2971359b6f5d076c22ca109a9c51d8bdba600e7a97c783fb7c28688f1"
+    },
+    {
+      "path": "web/index.html",
+      "bytes": 10357,
+      "sha256": "11f3676437868021f8873717b76280856c262cf4fbc4b3dd353f89f3066be28a",
+      "gitContentSha256": "77120e09cee9099e79266a780511f8bc99ed2e4b5e3850d3f267806702eb8d51"
+    },
+    {
+      "path": "web/styles.css",
+      "bytes": 24513,
+      "sha256": "475bb925339a788b292fbd88766da209ef1c0255ddb154ed524c79be94097a6a",
+      "gitContentSha256": "475bb925339a788b292fbd88766da209ef1c0255ddb154ed524c79be94097a6a"
+    }
+  ],
+  "integrityVerified": true,
+  "redactions": [
+    {
+      "path": "web/app.js",
+      "reason": "Replaced personal blog defaults and labels with generic placeholders."
+    },
+    {
+      "path": "web/index.html",
+      "reason": "Replaced personal blog defaults and labels with generic placeholders."
+    }
+  ]
+}
