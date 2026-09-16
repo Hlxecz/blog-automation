@@ -7,11 +7,12 @@ import { newJob, readyJob, prepareJob, renderDraft, buildPreview, listJobs } fro
 import { generate } from './generate.mjs';
 import { checkAI, providers } from './ai.mjs';
 import { createLibrary } from './tistory.mjs';
+import { createCategories } from './categories.mjs';
 import { createStyles } from './style.mjs';
 import { normalizeReferences, readReferences, collectReferences, referenceReview } from './references.mjs';
 import { createPublications, draftDigest } from './publication.mjs';
 import { jobStorage, deleteJobStorage } from './storage.mjs';
-import { manifestImage } from '../web/draft-model.js';
+import { manifestImage, normalizeCategory } from '../web/draft-model.js';
 import { articleCss, normalizeGitHubCard } from '../web/article-renderer.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -22,9 +23,10 @@ const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 const fail = (condition, message, status = 400) => { if (!condition) throw Object.assign(new Error(message), { status }); };
 const MIME = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.js': 'text/javascript', '.css': 'text/css', '.html': 'text/html' };
 
-export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), generator = generate, checkGenerator = checkAI, fetchPublic = fetch, publishAdapter = null, styleAnalyzer, fetchStyle, fetchReference, notionReader } = {}) {
+export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), generator = generate, checkGenerator = checkAI, fetchPublic = fetch, publishAdapter = null, categoryReader = null, styleAnalyzer, fetchStyle, fetchReference, notionReader } = {}) {
   const c = json(path.join(root, 'tistory.config.json'));
   const library = createLibrary(root, c.blogUrl, fetchPublic);
+  const categories = createCategories({ root, blogUrl: c.blogUrl, reader: categoryReader });
   const styles = createStyles({ root, profileFile: path.resolve(root, c.styleProfile), analyzer: styleAnalyzer, fetchPage: fetchStyle });
   const publications = createPublications({ adapter: publishAdapter, blogUrl: c.blogUrl, tocMode: c.tocMode });
   const inbox = path.resolve(root, c.inbox), output = path.resolve(root, c.output);
@@ -53,6 +55,7 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
   };
   const mutableJob = id => {
     jobDir(id);
+    fail(!categories.isRunning(), '카테고리를 불러온 뒤 다시 시도해 주세요.', 409);
     fail(!active.has(id), '글 작성 또는 발행 중입니다. 완료된 뒤 수정하거나 삭제해 주세요.', 409);
   };
   const metaFor = dir => exists(path.join(dir, 'app.json')) ? json(path.join(dir, 'app.json')) : { title: '', updatedAt: fs.statSync(dir).mtime.toISOString(), directory: null };
@@ -97,6 +100,10 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
     return prepared.directory;
   }
   function persistDraft(id, directory, draft, review = '', analysis = '', referenceReports) {
+    if (draft?.category != null) {
+      try { draft.category = normalizeCategory(draft.category, c.blogUrl); }
+      catch (error) { fail(false, error.message); }
+    }
     if (draft?.githubCard != null) {
       try {draft.githubCard=normalizeGitHubCard(draft.githubCard);}
       catch(error){fail(false,error.message);}
@@ -167,11 +174,19 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
       if (req.headers.origin) fail(req.headers.origin === url.origin, '허용되지 않은 요청입니다.', 403);
       if (!['GET', 'HEAD'].includes(req.method)) fail(req.headers['x-app-token'] === token, '앱을 새로고침한 뒤 다시 시도해 주세요.', 403);
       const route = url.pathname;
+      if (route === '/api/categories' && req.method === 'GET') return sendJson(res, categories.state());
+      if (route === '/api/categories' && req.method === 'POST') {
+        fail(active.size === 0 && !styles.isRunning() && !checkingAI, '진행 중인 작업이 끝난 뒤 카테고리를 불러와 주세요.', 409);
+        return sendJson(res, await categories.refresh());
+      }
+      if (req.method !== 'GET' && (route === '/api/style/analyze' || route.startsWith('/api/ai') || /\/(generate|publish|references\/read)$/.test(route))) {
+        fail(!categories.isRunning(), '카테고리를 불러온 뒤 다시 시도해 주세요.', 409);
+      }
       if (route === '/api/ai' && req.method === 'GET') { await connectionCheck; return sendJson(res, ai); }
       if ((route === '/api/ai' && req.method === 'PUT') || (route === '/api/ai/check' && req.method === 'POST')) {
         const b = req.method === 'PUT' ? await bodyJson(req) : { provider };
         fail(Object.hasOwn(providers, b.provider), 'Codex 또는 Claude Code를 선택해 주세요.');
-        fail(!checkingAI && active.size === 0 && !styles.isRunning(), '진행 중인 작업이 끝난 뒤 AI 연결을 변경하거나 확인해 주세요.', 409);
+        fail(!checkingAI && active.size === 0 && !styles.isRunning() && !categories.isRunning(), '진행 중인 작업이 끝난 뒤 AI 연결을 변경하거나 확인해 주세요.', 409);
         checkingAI = true;
         try {
           await connectionCheck;
@@ -183,6 +198,7 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
       if (route === '/api/style' && req.method === 'PUT') return sendJson(res, styles.save(await bodyJson(req)));
       if (route === '/api/style/analyze' && req.method === 'POST') {
         const b = await bodyJson(req);
+        fail(!categories.isRunning(), '카테고리를 불러온 뒤 다시 시도해 주세요.', 409);
         fail(!checkingAI, 'AI 연결 확인이 끝난 뒤 다시 시도해 주세요.', 409);
         return sendJson(res, styles.start(b.urls, { provider }), 202);
       }
@@ -195,7 +211,7 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
       if (remote && req.method === 'GET' && !remote[2]) return sendJson(res, library.read(remote[1]));
       if (remote && req.method === 'POST' && remote[2] === 'sync') return sendJson(res, await library.sync(remote[1]));
       if (route === '/api/bootstrap' && req.method === 'GET') { await connectionCheck; return sendJson(res, {
-        token, blogUrl: c.blogUrl, connected: ai.connected, ai, canPublish: !!publishAdapter,
+        token, blogUrl: c.blogUrl, connected: ai.connected, ai, canPublish: !!publishAdapter, categories: categories.state(),
         style: exists(path.resolve(root, c.styleProfile)) ? fs.readFileSync(path.resolve(root, c.styleProfile), 'utf8') : ''
       }); }
       if (route === '/api/jobs' && req.method === 'GET') {
@@ -305,6 +321,8 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
               fail(Array.isArray(result.draft?.blocks), '본문이 생성되지 않았습니다.');
               result.draft.blocks = result.draft.blocks.filter(b => b.type !== 'image' || !blocked.has(b.file));
               // Cover selection belongs to the user, and survives regeneration.
+              delete result.draft.category;
+              if (previousDraft?.category) result.draft.category = previousDraft.category;
               delete result.draft.cover;
               if (previousDraft?.cover && !blocked.has(previousDraft.cover)) result.draft.cover = previousDraft.cover;
               // The user owns the info card; AI regeneration cannot replace it.
@@ -348,7 +366,7 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
       else res.end();
     }
   });
-  server.hasActiveGeneration = () => active.size > 0 || styles.isRunning();
+  server.hasActiveGeneration = () => active.size > 0 || styles.isRunning() || categories.isRunning();
   return server;
 }
 

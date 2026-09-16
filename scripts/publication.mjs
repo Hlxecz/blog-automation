@@ -3,7 +3,7 @@ import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { load } from 'cheerio';
 import { buildPreview } from './blog.mjs';
-import { manifestImage } from '../web/draft-model.js';
+import { manifestImage, normalizeCategory } from '../web/draft-model.js';
 import { articleStyles, normalizeGitHubCard } from '../web/article-renderer.js';
 
 const read = file => JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -33,6 +33,9 @@ export function createPublications({ adapter, blogUrl, tocMode = 'article' }) {
     const bytes=fs.readFileSync(path.join(directory,'draft.json')), digest=hash(bytes);
     if (expectedDigest !== digest) reject('초안이 변경됐습니다. 다시 열어 내용을 확인한 뒤 발행해 주세요.');
     const draft=JSON.parse(bytes), manifest=read(path.join(directory,'manifest.json'));
+    if (draft.category != null) {
+      try { normalizeCategory(draft.category, blogUrl); } catch (error) { reject(error.message); }
+    }
     const {usedImages}=buildPreview(draft,manifest);
     if (draft.tags.length > 10 || draft.tags.some(t=>!t.trim() || t.length>50)) reject('태그는 빈 값 없이 10개 이하, 태그당 50자 이하로 정리해 주세요.');
     if (new Set(draft.tags.map(t=>t.trim())).size !== draft.tags.length) reject('중복된 태그를 정리한 뒤 다시 눌러 주세요.');
@@ -57,7 +60,7 @@ export function createPublications({ adapter, blogUrl, tocMode = 'article' }) {
     })).then(result=>{
       const url=new URL(result.url);
       if (url.origin !== new URL(blogUrl).origin || !/^\/(\d+|entry\/[^/]+)\/?$/.test(url.pathname) ||
-          result.title!==draft.title || !result.verifiedAt || !result.evidence?.public || !result.evidence?.body || !result.evidence?.images || (draft.cover && result.evidence?.cover !== true))
+          result.title!==draft.title || !result.verifiedAt || !result.evidence?.public || !result.evidence?.body || !result.evidence?.images || (draft.cover && result.evidence?.cover !== true) || (draft.category && result.evidence?.category !== true))
         throw new Error('발행된 글의 제목·본문·사진을 확인하지 못했습니다.');
       record={...record,phase:'published',message:'티스토리에 발행했어요.',url:url.href,verifiedAt:result.verifiedAt,evidence:result.evidence};
       save(file,record); save(path.join(snapshot,'published-receipt.json'),record);
@@ -97,6 +100,17 @@ export function verifyPublishedHtml(html,draft,uploaded) {
   const $=load(html); $('script,style,noscript,.hdev-toc,[data-hdev-toc],#toc').remove();
   const title=$('meta[property="og:title"]').attr('content') || $('h1').first().text();
   if (title.trim()!==draft.title.trim()) return false;
+  if (draft.category) {
+    const category = normalizeCategory(draft.category);
+    const paths = $('a.category').toArray().map(el => {
+      try {
+        const link = new URL($(el).attr('href'), category.blogUrl);
+        if (link.origin !== category.blogUrl || !/^\/category(?:\/|$)/.test(link.pathname)) return null;
+        return link.pathname.replace(/\/$/, '').split('/').slice(2).map(decodeURIComponent);
+      } catch { return null; }
+    }).filter(Boolean);
+    if (category.id === '0' ? paths.some(names => names.length) : !paths.some(names => JSON.stringify(names) === JSON.stringify(category.path))) return false;
+  }
   if (draft.cover) {
     const markup = uploaded[draft.cover];
     if (!markup) return false;

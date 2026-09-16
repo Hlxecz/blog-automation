@@ -67,6 +67,11 @@
       <section class="draft-panel" aria-labelledby="draft-heading">
         <div class="panel-heading draft-toolbar"><h2 id="draft-heading"><span data-icon="file"></span> 글 미리보기</h2><div class="draft-toolbar-actions"><button id="github-card" class="button secondary github-card-button" aria-pressed="false" disabled><span data-icon="github"></span> GitHub 카드</button><div class="view-switch" role="group" aria-label="글 보기 모드"><button id="edit-view" aria-pressed="false">편집</button><button id="preview-view" class="active" aria-pressed="true">미리보기</button></div></div></div>
         <div id="changed-banner" class="changed-banner" hidden>자료가 바뀌었어요. 기존 글은 보관되어 있으며, 다시 생성하면 새 자료를 반영합니다.</div>
+        <section id="category-section" class="category-section" aria-label="발행 카테고리" hidden>
+          <label for="draft-category">발행 카테고리</label>
+          <div class="category-controls"><select id="draft-category" aria-describedby="category-status"><option value="">티스토리 기본값</option></select><button id="category-refresh" class="button secondary">카테고리 불러오기</button></div>
+          <p id="category-status" role="status">티스토리의 카테고리를 불러와 이 글을 넣을 곳을 선택하세요.</p>
+        </section>
         <section id="cover-section" class="cover-section" aria-label="글 표지" hidden>
           <div id="cover-preview" class="cover-preview"></div>
           <div class="cover-content"><h3>표지 · 대표 이미지 <span id="cover-badge">자동</span></h3><p id="cover-description">첫 번째 본문 사진을 사용해요.</p>

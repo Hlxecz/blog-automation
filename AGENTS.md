@@ -44,6 +44,8 @@
 
 ## 구현 안내
 
+발행 카테고리는 선택적인 `draft.category`의 `{blogUrl,id,path}`로 보관합니다. `path`는 상위·하위 이름 배열이며 AI 재생성 시 사용자의 선택을 유지합니다. `scripts/categories.mjs`는 블로그별 목록을 로컬 `library/categories.json`에 보관하고, 데스크톱의 `createTistoryCategoryReader`가 로그인한 새 글 편집 화면의 목록만 읽습니다. 2026-09-16 실제 화면에서 `category-btn`, `category-list`, `category-item-<ID>`, `category-id`, `aria-label`을 확인했습니다. 옵션의 `aria-selected`는 키보드 초점이므로 선택 확인에 사용하지 않습니다. 번호와 전체 경로를 대조해 클릭한 뒤 버튼 표시를 확인하며, 삭제·변경된 분류에 임의로 대체 발행하지 않습니다. 공개 글의 `a.category` 경로까지 맞아야 카테고리 검증을 기록합니다. 명시적인 카테고리 없음은 ID `0`이며, 필드 자체가 없으면 기존 편집기 기본값을 유지합니다.
+
 GitHub 정보 카드는 선택적인 `draft.githubCard`에 아이콘·주제 분류·주제·링크 분류·주소·링크 이름·설명으로 보관합니다. `web/article-renderer.js`가 목차 다음, 본문·표지 전에 렌더링하며, 스킨 목차 모드에서는 본문 맨 앞에 둡니다. AI가 카드 내용을 생성하거나 재생성 시 덮어쓰지 않으며 사용자의 추가·수정·제거를 유지합니다. 발행 검증에는 카드 문구와 실제 링크 주소를 포함합니다.
 
 새로 받은 소스는 `npm ci`와 `npm run setup`으로 준비한다. 개인 설정과 말투 원문은 Git에서 제외하며 공유용 기본값은 `config/`에서 관리한다. 기존 설정을 덮어쓰지 않는다. 버전은 `package.json`과 잠금 파일에 맞추고 변경 내용은 `CHANGELOG.md`에 기록한다. 배포 절차는 `docs/RELEASING.md`를 따른다. 개발 확인은 `npm run desktop`을 사용하고, EXE는 배포 시 빌드한다. 사용자는 2026-09-15에 `Hlxecz/blog-automation` 저장소 생성, 버전별 순차 푸시와 불필요한 빌드 파일 삭제를 요청했다. 로컬 EXE는 최신 버전 하나만 보관하며 과거 소스는 Git 커밋·태그로 관리한다. 정리 전 백업된 소스와 최신 EXE를 확인하고, 사진·초안·설정은 삭제하지 않는다. `v0.3.0`~`v0.3.4`는 배포본 소스에서 복원했으며 범위는 `docs/HISTORY.md`에 기록했다.

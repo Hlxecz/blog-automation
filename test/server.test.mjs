@@ -10,6 +10,37 @@ import { articleBlocks } from '../web/draft-model.js';
 const PNG = fs.readFileSync(new URL('./fixtures/redis-test.png', import.meta.url));
 const draftFor = image => ({ title:'검증용 개발 기록', tags:['테스트'], blocks:[{ type:'paragraph', text:'관찰한 내용을 정리합니다.' },{ type:'image',file:image,alt:'가상 테스트 캡처',caption:'앱 검증 자료' }] });
 
+test('category API locks reads, preserves selection on regeneration, rejects other blogs, and retains the default choice', async t => {
+  const category={blogUrl:'https://example.tistory.com',id:'11',path:['Language','Java']};
+  const items=[{blogUrl:category.blogUrl,id:'0',path:['카테고리 없음']},category];
+  let release, shouldWait=true;
+  const gate=new Promise(resolve=>{release=resolve;});
+  const {request,id,job,root}=await fixture(t,async input=>{
+    const manifest=JSON.parse(fs.readFileSync(path.join(input.directory,'manifest.json')));
+    return {draft:{...draftFor(manifest.images[0].name),category:{...category,id:'99'}},analysis:'',review:'',sensitiveImages:[]};
+  },null,{categoryReader:async ({blogUrl})=>{assert.equal(blogUrl,category.blogUrl);if(shouldWait)await gate;return items;}});
+  assert.equal((await request('/api/categories')).data.canRead,true);
+  assert.equal((await request('/api/categories','POST',undefined,{'X-App-Token':'bad'})).status,403);
+  const pending=request('/api/categories','POST');
+  for(let i=0;i<50;i++){if((await request('/api/categories')).data.busy)break;await new Promise(r=>setTimeout(r,10));}
+  try {
+    assert.equal((await request('/api/categories','POST')).status,409);
+    assert.equal((await request(`/api/jobs/${id}/generate`,'POST')).status,409);
+    assert.equal((await request(`/api/jobs/${id}/publish`,'POST',{})).status,409);
+  } finally {shouldWait=false;release();}
+  assert.deepEqual((await pending).data.items,items);
+  const route=`/api/jobs/${id}/draft`,draft={...draftFor(job.images[0].name),category};
+  assert.equal((await request(route,'PUT',{draft,review:''})).status,200);
+  const saved=(await request(`/api/jobs/${id}`)).data.draft;
+  assert.deepEqual(saved.category,category);
+  assert.equal((await request(route,'PUT',{draft:{...draft,category:{...category,blogUrl:'https://other.tistory.com'}},review:''})).status,400);
+  assert.deepEqual((await request(`/api/jobs/${id}`)).data.draft,saved);
+  await request(`/api/jobs/${id}/generate`,'POST');assert.deepEqual((await settled(request,id)).draft.category,category);
+  delete draft.category;await request(route,'PUT',{draft,review:''});
+  await request(`/api/jobs/${id}/generate`,'POST');assert.equal((await settled(request,id)).draft.category,undefined);
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(root,'library/categories.json'))).items,items);
+});
+
 test('references persist, enter frozen AI input, show partial failures and survive failed regeneration', async t => {
   let shouldFail = false, received;
   const {request,id,root,job} = await fixture(t, async input => {

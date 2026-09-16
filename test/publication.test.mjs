@@ -47,6 +47,25 @@ test('publish rejects a stale draft or changed photo before touching Tistory', t
   assert.equal(publications.state(job).phase, 'idle');
 });
 
+test('category selection is frozen for publication and unverified categories cannot record success', async t => {
+  const {job,directory,draft}=fixture(t);
+  const category={blogUrl,id:'21',path:['Study','Java']};
+  fs.writeFileSync(path.join(directory,'draft.json'),JSON.stringify({...draft,category}));
+  let release, sent;
+  const gate=new Promise(resolve=>{release=resolve;});
+  const publications=createPublications({blogUrl,adapter:async request=>{
+    sent=request;await gate;request.beforeSubmit();return receipt(request.draft);
+  }});
+  const started=publications.start({job,directory,expectedDigest:draftDigest(directory)});
+  fs.writeFileSync(path.join(directory,'draft.json'),JSON.stringify({...draft,category:{...category,id:'11',path:['Language','Java']}}));
+  release();const result=await settle(publications,job);
+  assert.deepEqual(sent.draft.category,category);
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(started.snapshot,'draft.json'))).category,category);
+  assert.equal(result.phase,'uncertain');
+  assert.equal(fs.existsSync(path.join(started.snapshot,'published-receipt.json')),false);
+  assert.throws(()=>publications.start({job,directory,expectedDigest:draftDigest(directory)}),/불확실/);
+});
+
 test('snapshot, durable submit marker, and double clicks preserve one reviewed publication', async t => {
   const { job, directory, draft } = fixture(t);
   let release, attempts = 0, sent;
