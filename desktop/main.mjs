@@ -103,7 +103,7 @@ else {
     protectNavigation(mainWindow, true);
     mainWindow.on('close', event => {
       if (server.hasActiveGeneration()) {
-        event.preventDefault(); dialog.showMessageBox(mainWindow, { type: 'info', message: '글 작성, 말투 분석 또는 발행이 진행 중입니다.', detail: '작업이 끝나면 앱을 닫을 수 있어요. 티스토리 로그인 화면이 열렸다면 먼저 로그인을 완료해 주세요.' });
+        event.preventDefault(); dialog.showMessageBox(mainWindow, { type: 'info', message: '자료 읽기, 글 작성, 말투 분석 또는 발행이 진행 중입니다.', detail: '작업이 끝나면 앱을 닫을 수 있어요. 티스토리 로그인 화면이 열렸다면 먼저 로그인을 완료해 주세요.' });
       }
     });
     mainWindow.on('closed', () => { mainWindow = null; });

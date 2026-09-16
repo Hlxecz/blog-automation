@@ -9,11 +9,93 @@ import { articleBlocks } from '../web/draft-model.js';
 
 const PNG = fs.readFileSync(new URL('./fixtures/redis-test.png', import.meta.url));
 const draftFor = image => ({ title:'검증용 개발 기록', tags:['테스트'], blocks:[{ type:'paragraph', text:'관찰한 내용을 정리합니다.' },{ type:'image',file:image,alt:'가상 테스트 캡처',caption:'앱 검증 자료' }] });
-async function fixture(t, generator = async()=>{throw new Error('테스트 생성 실패');}, publishAdapter = null) {
+
+test('references persist, enter frozen AI input, show partial failures and survive failed regeneration', async t => {
+  let shouldFail = false, received;
+  const {request,id,root,job} = await fixture(t, async input => {
+    received = input;
+    if (shouldFail) throw new Error('연결 실패');
+    const manifest = JSON.parse(fs.readFileSync(path.join(input.directory,'manifest.json')));
+    return {draft:draftFor(manifest.images[0].name),analysis:'분석',review:'검토',sensitiveImages:[]};
+  }, null, {fetchReference: async url => {
+    if (url.includes('blocked')) throw new Error('403');
+    return {url,text:`<article>${'서버가 읽은 공개 문서의 내용입니다. '.repeat(10)}</article>`};
+  }});
+  const route = `/api/jobs/${id}`, body = {title:'테스트',notes:'작업 메모',order:job.images.map(i=>i.name)};
+  const references = [{url:'https://example.com/docs',content:''},{url:'https://example.notion.site/private',content:'직접 입력한 참고자료'},{url:'https://example.com/blocked',content:''}];
+  assert.equal((await request(route,'PUT',{...body,references})).status,200);
+  assert.deepEqual((await request(route)).data.references,references);
+  assert.equal((await request(route,'PUT',{...body,notes:'덮어쓰면 안 됨',references:[{url:'http://localhost'}]})).status,400);
+  assert.equal((await request(route)).data.notes,body.notes);
+  await request(route,'PUT',body); // Old clients do not erase saved references.
+  assert.deepEqual((await request(route)).data.references,references);
+  await request(`${route}/generate`,'POST');
+  const done = await settled(request,id);
+  assert.equal(done.generation.phase,'done');
+  assert.deepEqual(received.references.map(r=>r.status),['read','provided','unavailable']);
+  assert.match(received.references[0].text,/서버가 읽은/);
+  assert.equal(received.references[1].text,'직접 입력한 참고자료');
+  assert.equal(done.referenceReports[2].status,'unavailable');
+  assert.equal(done.referenceReports[0].text,undefined);
+  assert.match(done.review,/참고자료 확인 기록/);
+  const originalDirectory = received.directory;
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(originalDirectory,'manifest.json'))).references,references);
+  const evidence = fs.readFileSync(path.join(originalDirectory,'references-read.json'),'utf8');
+  shouldFail = true;
+  await request(`${route}/generate`,'POST');
+  assert.equal((await settled(request,id)).generation.phase,'error');
+  assert.equal(fs.readFileSync(path.join(originalDirectory,'references-read.json'),'utf8'),evidence);
+  const changedReferences = [{url:'https://example.com/new',content:'새 자료'}];
+  const changed = (await request(route,'PUT',{...body,references:changedReferences})).data;
+  assert.equal(changed.changed,true); assert.deepEqual(changed.referenceReports,[]);
+  await request(`${route}/generate`,'POST');
+  const failed = await settled(request,id);
+  assert.equal(failed.generation.phase,'error'); assert.deepEqual(failed.draft,done.draft);
+  assert.notEqual(received.directory,originalDirectory);
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(originalDirectory,'references.json'))),references);
+  shouldFail = false;
+  await request(`${route}/generate`,'POST');
+  const regenerated = await settled(request,id);
+  assert.equal(regenerated.changed,false); assert.equal(regenerated.referenceReports[0].status,'provided');
+});
+
+test('checking references works without AI, persists readable evidence and locks input during reads',async t=>{
+  let release, generated=false;
+  const gate=new Promise(resolve=>{release=resolve;});
+  const {request,id,job,root}=await fixture(t,async()=>{generated=true;throw new Error('Should not generate');},null,{notionReader:async()=>{
+    await gate;return {title:'공개 노션 가이드',text:'첫 부분과 마지막 부분까지 읽은 자료입니다.',truncated:false,reader:'notion',blockCount:12};
+  }});
+  const route=`/api/jobs/${id}`,body={title:'자료 읽기',notes:'',order:job.images.map(i=>i.name),references:[{url:'https://example.notion.site/11111111222233334444555555555555'}]};
+  await request(route,'PUT',body);
+  const started=await request(`${route}/references/read`,'POST');
+  assert.equal(started.status,202);assert.equal(started.data.referenceRead.phase,'reading');
+  try{assert.equal((await request(route,'PUT',{...body,references:[]})).status,409);}finally{release();}
+  let done;for(let i=0;i<50;i++){done=(await request(route)).data;if(done.referenceRead.phase!=='reading')break;await new Promise(r=>setTimeout(r,10));}
+  assert.equal(done.referenceRead.phase,'done');assert.equal(generated,false);assert.equal(done.draft,null);
+  assert.equal(done.referenceReports[0].title,'공개 노션 가이드');assert.match(done.referenceReports[0].excerpt,/마지막/);
+  assert.ok(fs.existsSync(path.join(root,'inbox',id,'references-check.json')));
+  await request(route,'PUT',{...body,references:[]});assert.deepEqual((await request(route)).data.referenceReports,[]);
+});
+
+test('reference reads lock materials until generation finishes', async t => {
+  let release;
+  const waiting = new Promise(resolve => { release=resolve; });
+  const {request,id,job} = await fixture(t,async input=> {
+    const manifest=JSON.parse(fs.readFileSync(path.join(input.directory,'manifest.json')));
+    return {draft:draftFor(manifest.images[0].name),analysis:'',review:'',sensitiveImages:[]};
+  },null,{fetchReference:async url=> {await waiting;return {url,text:'<article>'+ '본문 자료입니다. '.repeat(20)+'</article>'};}});
+  const route=`/api/jobs/${id}`, body={title:'잠금',notes:'',order:job.images.map(i=>i.name),references:[{url:'https://example.com'}]};
+  await request(route,'PUT',body);
+  await request(`${route}/generate`,'POST');
+  try { assert.equal((await request(route,'PUT',{...body,references:[]})).status,409); }
+  finally { release(); }
+  assert.equal((await settled(request,id)).generation.phase,'done');
+});
+async function fixture(t, generator = async()=>{throw new Error('테스트 생성 실패');}, publishAdapter = null, options = {}) {
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'tistory-app-test-'));
   fs.writeFileSync(path.join(root,'tistory.config.json'),JSON.stringify({blogUrl:'https://example.tistory.com',inbox:'inbox',output:'drafts',styleSamples:'style',styleProfile:'style.md'}));
   fs.writeFileSync(path.join(root,'style.md'),'테스트 문체');
-  const server=createApp({root,generator,checkGenerator:async()=>true,publishAdapter});
+  const server=createApp({root,generator,checkGenerator:async()=>true,publishAdapter,...options});
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const url=`http://127.0.0.1:${server.address().port}`;
   const bootstrap=await (await fetch(`${url}/api/bootstrap`)).json();
@@ -47,6 +129,21 @@ test('photos, notes and edited drafts persist across requests; snapshot order ma
   await request(`/api/jobs/${id}`,'PUT',{title:'새 제목',notes:'사용자 메모',order:[names[0]]});
   assert.equal((await request(`/api/jobs/${id}`)).data.images.length,1);
   assert.ok(fs.existsSync(path.join(root,'inbox',id,'images',names[1])));
+});
+
+test('user GitHub cards persist, reject invalid replacements, survive regeneration, and stay removed',async t=>{
+  const card={icon:'📚',categoryLabel:'Java Collection',topic:'Stack & Deque',sourceLabel:'GitHub',url:'https://github.com/example/java',linkText:'코드 보기',description:'스택과 덱의 차이'};
+  const {request,id,job}=await fixture(t,async()=>({draft:{...draftFor(job.images[0].name),githubCard:{...card,topic:'AI가 임의로 쓴 카드'}},analysis:'분석',review:'검토',sensitiveImages:[]}));
+  const draft={...draftFor(job.images[0].name),githubCard:card};
+  const first=await request(`/api/jobs/${id}/draft`,'PUT',{draft,review:''});assert.equal(first.status,200);
+  assert.deepEqual((await request(`/api/jobs/${id}`)).data.draft.githubCard,card);
+  const invalid=await request(`/api/jobs/${id}/draft`,'PUT',{draft:{...draft,githubCard:{...card,url:'javascript:alert(1)'}},review:''});
+  assert.equal(invalid.status,400);assert.deepEqual((await request(`/api/jobs/${id}`)).data.draft.githubCard,card);
+  await request(`/api/jobs/${id}/generate`,'POST');const generated=await settled(request,id);
+  assert.equal(generated.generation.phase,'done');assert.deepEqual(generated.draft.githubCard,card);
+  const removed=await request(`/api/jobs/${id}/draft`,'PUT',{draft:draftFor(job.images[0].name),review:''});
+  assert.equal(removed.status,200);assert.notEqual(removed.data.draftDigest,first.data.draftDigest);
+  await request(`/api/jobs/${id}/generate`,'POST');assert.equal((await settled(request,id)).draft.githubCard,undefined);
 });
 
 test('invalid files and cross-origin mutations are rejected',async t=>{

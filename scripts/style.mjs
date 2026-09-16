@@ -1,11 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import https from 'node:https';
-import { lookup } from 'node:dns/promises';
-import { BlockList, isIP } from 'node:net';
 import { createHash, randomUUID } from 'node:crypto';
 import { load } from 'cheerio';
 import { analyzeWritingStyle } from './generate.mjs';
+import { publicAddress as styleAddress, fetchPublicPage as fetchStylePage } from './public-web.mjs';
+export { publicIP, publicAddress as styleAddress, fetchPublicPage as fetchStylePage } from './public-web.mjs';
 
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
 const read = file => JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -15,16 +14,6 @@ function write(file, value) {
   fs.writeFileSync(temp, value);
   fs.renameSync(temp, file);
 }
-const blocked = new BlockList();
-for (const [ip, prefix] of [['0.0.0.0',8],['10.0.0.0',8],['100.64.0.0',10],['127.0.0.0',8],['169.254.0.0',16],['172.16.0.0',12],['192.0.0.0',24],['192.0.2.0',24],['192.168.0.0',16],['198.18.0.0',15],['198.51.100.0',24],['203.0.113.0',24],['224.0.0.0',3]]) blocked.addSubnet(ip, prefix);
-export const publicIP = ip => isIP(ip) === 4 ? !blocked.check(ip) : isIP(ip) === 6 && /^[23][a-f\d]{3}:/i.test(ip) && !/^2001:(?:0:|db8:)/i.test(ip);
-export function styleAddress(value) {
-  let url;
-  try { url = new URL(value); } catch { fail('https://로 시작하는 공개 블로그 주소를 입력해 주세요.'); }
-  if (url.protocol !== 'https:' || url.username || url.password || url.port || isIP(url.hostname.replace(/[\[\]]/g,'')) || !url.hostname.includes('.') || /\.(localhost|local|internal)$/i.test(url.hostname)) fail('공개 블로그의 HTTPS 주소를 입력해 주세요.');
-  url.hash = '';
-  return url.href.replace(/\/$/, '');
-}
 export function styleURLs(values) {
   if (!Array.isArray(values) || values.length > 3 || values.some(v => typeof v !== 'string' || v.length > 2048)) fail('참고 블로그는 최대 3개까지 입력할 수 있습니다.');
   const urls = values.filter(v => v.trim()).map(v => styleAddress(v.trim()));
@@ -32,36 +21,6 @@ export function styleURLs(values) {
   return urls;
 }
 
-// Resolve and pin public addresses for every redirect; no credentials or cookies are sent.
-export async function fetchStylePage(input, redirects = 0) {
-  const url = new URL(styleAddress(input));
-  const addresses = await lookup(url.hostname, { all: true });
-  if (!addresses.length || addresses.some(a => !publicIP(a.address))) fail('이 주소는 공개 블로그 주소로 사용할 수 없습니다.');
-  const chosen = addresses.find(a => a.family === 4) || addresses[0];
-  return new Promise((resolve, reject) => {
-    const req = https.get(url, { agent: false, signal: AbortSignal.timeout(15000),
-      headers: { Accept: 'text/html, application/xml, text/xml, */*', 'User-Agent': 'HDevStudio/0.3 (public blog style reader)' },
-      lookup: (_host, options, callback) => options.all ? callback(null, [chosen]) : callback(null, chosen.address, chosen.family)
-    }, res => {
-      if ([301,302,303,307,308].includes(res.statusCode)) {
-        res.resume();
-        if (redirects >= 3 || !res.headers.location) return reject(new Error('블로그 주소 이동을 확인하지 못했습니다.'));
-        try { resolve(fetchStylePage(new URL(res.headers.location, url).href, redirects + 1)); } catch (e) { reject(e); }
-        return;
-      }
-      if (res.statusCode !== 200) { res.resume(); return reject(new Error(`공개 글에 연결하지 못했습니다 (${res.statusCode}).`)); }
-      const chunks = []; let size = 0;
-      res.on('data', chunk => {
-        size += chunk.length;
-        if (size > 2 * 1024 * 1024) { req.destroy(new Error('공개 글의 크기가 너무 큽니다.')); return; }
-        chunks.push(chunk);
-      });
-      res.on('end', () => resolve({ text: Buffer.concat(chunks).toString('utf8'), url: url.href }));
-      res.on('error', reject);
-    });
-    req.on('error', reject);
-  });
-}
 
 const clean = ($, node) => {
   const copy = node.clone();

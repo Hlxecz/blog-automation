@@ -8,9 +8,11 @@ import { generate } from './generate.mjs';
 import { checkAI, providers } from './ai.mjs';
 import { createLibrary } from './tistory.mjs';
 import { createStyles } from './style.mjs';
+import { normalizeReferences, readReferences, collectReferences, referenceReview } from './references.mjs';
 import { createPublications, draftDigest } from './publication.mjs';
 import { jobStorage, deleteJobStorage } from './storage.mjs';
 import { manifestImage } from '../web/draft-model.js';
+import { articleCss, normalizeGitHubCard } from '../web/article-renderer.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const json = file => JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, ''));
@@ -20,15 +22,16 @@ const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 const fail = (condition, message, status = 400) => { if (!condition) throw Object.assign(new Error(message), { status }); };
 const MIME = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.js': 'text/javascript', '.css': 'text/css', '.html': 'text/html' };
 
-export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), generator = generate, checkGenerator = checkAI, fetchPublic = fetch, publishAdapter = null, styleAnalyzer, fetchStyle } = {}) {
+export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), generator = generate, checkGenerator = checkAI, fetchPublic = fetch, publishAdapter = null, styleAnalyzer, fetchStyle, fetchReference, notionReader } = {}) {
   const c = json(path.join(root, 'tistory.config.json'));
   const library = createLibrary(root, c.blogUrl, fetchPublic);
   const styles = createStyles({ root, profileFile: path.resolve(root, c.styleProfile), analyzer: styleAnalyzer, fetchPage: fetchStyle });
-  const publications = createPublications({ adapter: publishAdapter, blogUrl: c.blogUrl });
+  const publications = createPublications({ adapter: publishAdapter, blogUrl: c.blogUrl, tocMode: c.tocMode });
   const inbox = path.resolve(root, c.inbox), output = path.resolve(root, c.output);
   const token = randomBytes(32).toString('hex');
   const active = new Set();
   const generationStates = new Map();
+  const referenceReadStates = new Map();
   const aiFile = path.join(root, 'ai.settings.json');
   let provider = exists(aiFile) ? json(aiFile).provider : 'codex';
   if (!Object.hasOwn(providers, provider)) provider = 'codex';
@@ -65,13 +68,19 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
     const state = generationStates.get(id) || (meta.generating ? { phase: 'error', message: '앱이 재시작되어 글 작성이 중단됐습니다. 다시 시도해 주세요.' } : { phase: 'idle' });
     const draft = saved && exists(path.join(saved, 'draft.json')) ? json(path.join(saved, 'draft.json')) : null;
     const savedInput = saved ? json(path.join(saved, 'manifest.json')) : null;
+    const references = readReferences(dir);
+    const sameReferences = JSON.stringify(references) === JSON.stringify(savedInput?.references || []);
+    const checked = exists(path.join(dir,'references-check.json')) ? json(path.join(dir,'references-check.json')) : null;
+    const reports = checked && JSON.stringify(checked.references) === JSON.stringify(references) ? checked.reports
+      : saved && sameReferences && exists(path.join(saved, 'references-read.json')) ? json(path.join(saved, 'references-read.json')) : [];
+    const referenceReports = reports.map(({ text, ...report }) => ({ ...report, characters:text.length, excerpt:text.slice(0,800) }));
     let changed = false;
     if (savedInput) {
       const names = imageNames(dir);
       changed = names.join('\n') !== savedInput.images.map(i => i.name).join('\n') ||
-        fs.readFileSync(path.join(dir, 'notes.md'), 'utf8') !== fs.readFileSync(path.join(saved, 'notes.md'), 'utf8');
+        fs.readFileSync(path.join(dir, 'notes.md'), 'utf8') !== fs.readFileSync(path.join(saved, 'notes.md'), 'utf8') || !sameReferences;
     }
-    return { id, title: meta.title || '', notes: fs.readFileSync(path.join(dir, 'notes.md'), 'utf8'),
+    return { id, title: meta.title || '', notes: fs.readFileSync(path.join(dir, 'notes.md'), 'utf8'), references, referenceReports, referenceRead:referenceReadStates.get(id) || {phase:'idle'},
       updatedAt: meta.updatedAt, images: imageNames(dir).map(name => ({ name, label: meta.labels?.[name] || name, url: `/api/jobs/${id}/images/${encodeURIComponent(name)}` })),
       draft, draftImages: savedInput?.images.map(i => ({ name: i.name, url: `/api/jobs/${id}/draft-images/${encodeURIComponent(i.name)}` })) || [],
       coverImages: [...new Set([...(meta.coverUploads || []), ...(savedInput?.coverImages || []).map(i => i.name)])].map(name => ({ name, label:meta.labels?.[name] || '표지 사진', url:`/api/jobs/${id}/${savedInput?.coverImages?.some(i=>i.name===name) ? 'draft-images' : 'images'}/${encodeURIComponent(name)}` })),
@@ -87,7 +96,11 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
     saveMeta(jobDir(id), { directory: prepared.directory });
     return prepared.directory;
   }
-  function persistDraft(id, directory, draft, review = '', analysis = '') {
+  function persistDraft(id, directory, draft, review = '', analysis = '', referenceReports) {
+    if (draft?.githubCard != null) {
+      try {draft.githubCard=normalizeGitHubCard(draft.githubCard);}
+      catch(error){fail(false,error.message);}
+    }
     const manifest = json(path.join(directory, 'manifest.json'));
     let coverSource;
     if (draft?.cover != null && !manifestImage(manifest,draft.cover)) {
@@ -113,9 +126,12 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
     const file = path.join(directory, 'draft.json');
     if (exists(file)) {
       fs.mkdirSync(path.join(directory, 'history'), { recursive: true });
-      fs.copyFileSync(file, path.join(directory, 'history', `draft-${Date.now()}-${randomUUID().slice(0,8)}.json`));
+      const version = `${Date.now()}-${randomUUID().slice(0,8)}`;
+      fs.copyFileSync(file, path.join(directory, 'history', `draft-${version}.json`));
+      if (exists(path.join(directory, 'references-read.json'))) fs.copyFileSync(path.join(directory, 'references-read.json'), path.join(directory, 'history', `references-${version}.json`));
     }
     write(file, draft);
+    if (referenceReports) write(path.join(directory, 'references-read.json'), referenceReports);
     fs.writeFileSync(path.join(directory, 'review.md'), review);
     if (analysis) fs.writeFileSync(path.join(directory, 'analysis.md'), analysis);
     renderDraft(directory);
@@ -221,7 +237,9 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
           fail(typeof b.title === 'string' && b.title.length <= 200 && typeof b.notes === 'string' && b.notes.length <= 20000, '제목이나 메모 길이를 확인해 주세요.');
           const allNames = fs.readdirSync(path.join(dir, 'images'));
           fail(Array.isArray(b.order) && b.order.length <= 20 && new Set(b.order).size === b.order.length && b.order.every(n => allNames.includes(n) && path.basename(n) === n), '사진 목록이 올바르지 않습니다.');
+          const references = b.references === undefined ? readReferences(dir) : normalizeReferences(b.references);
           fs.writeFileSync(path.join(dir, 'notes.md'), b.notes); write(path.join(dir, 'order.json'), b.order);
+          write(path.join(dir, 'references.json'), references);
           saveMeta(dir, { title: b.title });
           return sendJson(res, readJob(id));
         }
@@ -248,6 +266,20 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
           fail(base, '초안 사진을 찾을 수 없습니다.', 404);
           return sendFile(res, path.join(base, 'images', name));
         }
+        if (action === 'references/read' && req.method === 'POST') {
+          const references = readReferences(dir);
+          fail(references.length > 0, '참고자료 링크를 먼저 추가해 주세요.');
+          active.add(id);
+          referenceReadStates.set(id,{phase:'reading',message:'참고자료의 본문을 확인하고 있어요.'});
+          sendJson(res,readJob(id),202);
+          collectReferences(references,fetchReference,message=>referenceReadStates.set(id,{phase:'reading',message}),notionReader)
+            .then(reports=>{
+              write(path.join(dir,'references-check.json'),{references,reports});
+              referenceReadStates.set(id,{phase:'done'});
+            }).catch(error=>referenceReadStates.set(id,{phase:'error',message:error.message}))
+            .finally(()=>active.delete(id));
+          return;
+        }
         if (action === 'generate' && req.method === 'POST') {
           fail(!checkingAI, 'AI 연결 확인이 끝난 뒤 다시 시도해 주세요.', 409);
           fail(active.size === 0, '다른 글을 작성 중입니다. 완료된 뒤 시도해 주세요.', 409);
@@ -260,10 +292,14 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
           active.add(id); saveMeta(dir, { generating: true, directory: previousDirectory });
           generationStates.set(id, { phase: 'generating', message: '캡처를 분석할 준비를 하고 있어요.' });
           sendJson(res, readJob(id), 202);
-          Promise.resolve().then(() => generator({ provider, root, directory, title: meta.title, notes: fs.readFileSync(path.join(dir, 'notes.md'), 'utf8'),
-            style: fs.readFileSync(styleFile, 'utf8'), onProgress: message => generationStates.set(id, { phase: 'generating', message }) })
-          )
-            .then(result => {
+          Promise.resolve().then(async () => {
+            const onProgress = message => generationStates.set(id, { phase: 'generating', message });
+            const references = await collectReferences(readReferences(directory), fetchReference, onProgress, notionReader);
+            const result = await generator({ provider, root, directory, title: meta.title, notes: fs.readFileSync(path.join(directory, 'notes.md'), 'utf8'),
+              references, style: fs.readFileSync(styleFile, 'utf8'), onProgress });
+            return { result, references };
+          })
+            .then(({ result, references }) => {
               fail(typeof result.analysis === 'string' && typeof result.review === 'string' && Array.isArray(result.sensitiveImages), '초안 결과 형식이 올바르지 않습니다.');
               const blocked = new Set(result.sensitiveImages);
               fail(Array.isArray(result.draft?.blocks), '본문이 생성되지 않았습니다.');
@@ -271,9 +307,13 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
               // Cover selection belongs to the user, and survives regeneration.
               delete result.draft.cover;
               if (previousDraft?.cover && !blocked.has(previousDraft.cover)) result.draft.cover = previousDraft.cover;
+              // The user owns the info card; AI regeneration cannot replace it.
+              delete result.draft.githubCard;
+              if (previousDraft?.githubCard) result.draft.githubCard=structuredClone(previousDraft.githubCard);
               const labels = metaFor(dir).labels || {};
-              const review = result.review + (blocked.size ? '\n\n민감한 정보가 보일 수 있어 제외한 사진:\n' + [...blocked].map(name => labels[name] || name).join('\n') : '');
-              persistDraft(id, directory, result.draft, review, result.analysis);
+              const review = result.review + referenceReview(references) + (blocked.size ? '\n\n민감한 정보가 보일 수 있어 제외한 사진:\n' + [...blocked].map(name => labels[name] || name).join('\n') : '');
+              persistDraft(id, directory, result.draft, review, result.analysis, references);
+              write(path.join(dir,'references-check.json'),{references:readReferences(directory),reports:references});
               generationStates.set(id, { phase: 'done', message: '초안을 만들었어요. 내용과 사진을 확인해 주세요.' });
             }).catch(e => { saveMeta(dir, { generating: false }); generationStates.set(id, { phase: 'error', message: e.message }); })
             .finally(() => active.delete(id));
@@ -299,7 +339,8 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
         }
         fail(false, '요청한 기능을 찾을 수 없습니다.', 404);
       }
-      const staticFiles = { '/': 'index.html', '/app.js': 'app.js', '/ai-help.js': 'ai-help.js', '/style-settings.js': 'style-settings.js', '/draft-model.js':'draft-model.js', '/styles.css': 'styles.css', '/favicon.svg': 'favicon.svg', '/favicon.png': 'favicon.png', '/logo.png': 'logo.png' };
+      if (req.method === 'GET' && route === '/article.css') { res.writeHead(200, { 'Content-Type':'text/css; charset=utf-8' }); return res.end(articleCss); }
+      const staticFiles = { '/': 'index.html', '/app.js': 'app.js', '/ai-help.js': 'ai-help.js', '/style-settings.js': 'style-settings.js', '/draft-model.js':'draft-model.js', '/article-renderer.js':'article-renderer.js', '/styles.css': 'styles.css', '/favicon.svg': 'favicon.svg', '/favicon.png': 'favicon.png', '/logo.png': 'logo.png' };
       if (req.method === 'GET' && Object.hasOwn(staticFiles, route)) return sendFile(res, path.join(webRoot, staticFiles[route]));
       fail(false, '페이지를 찾을 수 없습니다.', 404);
     } catch (error) {

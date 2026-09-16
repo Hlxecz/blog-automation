@@ -1,0 +1,82 @@
+// Real app UI and local persistence with disposable data; no AI or blog publication.
+import { app, BrowserWindow } from 'electron';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+import { createApp } from '../scripts/server.mjs';
+
+const root=fs.mkdtempSync(path.join(os.tmpdir(),'hdev-github-card-ui-'));
+app.setPath('userData',path.join(root,'electron'));
+app.on('window-all-closed',()=>{});
+fs.writeFileSync(path.join(root,'tistory.config.json'),JSON.stringify({blogUrl:'https://example.tistory.com',inbox:'inbox',output:'drafts',styleSamples:'samples',styleProfile:'profile.md'}));
+fs.writeFileSync(path.join(root,'profile.md'),'확인한 내용을 설명합니다.');
+const baseDraft={title:'Stack과 Deque 이해하기',tags:['Java'],blocks:[{type:'heading',text:'스택은 어떻게 동작할까?'},{type:'paragraph',text:'스택은 마지막에 넣은 데이터를 먼저 꺼내는 LIFO 구조입니다.'},{type:'heading',text:'Deque를 사용하는 방법'},{type:'paragraph',text:'Deque는 양쪽 끝에서 데이터를 추가하거나 꺼낼 수 있습니다.'}]};
+const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+const server=createApp({root,checkGenerator:async()=>true,fetchPublic:async()=>{throw new Error('Offline fixture');},generator:async()=>{await pause(350);return {draft:structuredClone(baseDraft),analysis:'검증용 분석',review:'검증용 초안',sensitiveImages:[]};}});
+const screenshots=path.resolve('.runtime/github-card-qa');fs.mkdirSync(screenshots,{recursive:true});
+let win;
+async function run() {
+  try {
+    await app.whenReady();await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+    const origin=`http://127.0.0.1:${server.address().port}`,bootstrap=await(await fetch(origin+'/api/bootstrap')).json();
+    const request=async(url,method='GET',json)=>{
+      const response=await fetch(origin+url,{method,headers:{'X-App-Token':bootstrap.token,'Content-Type':'application/json'},body:json===undefined?undefined:JSON.stringify(json)});
+      const data=await response.json();assert.ok(response.ok,JSON.stringify(data));return data;
+    };
+    const job=await request('/api/jobs','POST',{title:baseDraft.title});
+    const uploaded=await fetch(`${origin}/api/jobs/${job.id}/images?name=fixture.png`,{method:'POST',headers:{'X-App-Token':bootstrap.token},body:fs.readFileSync(new URL('../test/fixtures/redis-test.png',import.meta.url))});assert.ok(uploaded.ok);
+    await request(`/api/jobs/${job.id}/draft`,'PUT',{draft:baseDraft,review:''});
+    win=new BrowserWindow({show:false,width:1440,height:1040,webPreferences:{offscreen:true,backgroundThrottling:false,sandbox:true,nodeIntegration:false,contextIsolation:true}});
+    const errors=[];win.webContents.on('console-message',(_event,level,message)=>{if(level===3)errors.push(message);});
+    const js=code=>win.webContents.executeJavaScript(code);
+    const wait=async condition=>{for(let i=0;i<180;i++){if(await js(condition))return;await pause(60);}throw new Error(`Timed out: ${condition}`);};
+    const click=id=>js(`document.getElementById(${JSON.stringify(id)}).click()`);
+    const fill=(id,value)=>js(`{const el=document.getElementById(${JSON.stringify(id)});el.value=${JSON.stringify(value)};el.dispatchEvent(new Event('input',{bubbles:true}));}`);
+    const capture=async name=>{win.webContents.invalidate();await pause(350);fs.writeFileSync(path.join(screenshots,`${name}.png`),(await win.webContents.capturePage()).toPNG());};
+    const saved=async()=>{await click('save-all');await wait(`document.getElementById('save-state').textContent==='이 PC에 보관됨'`);return (await request(`/api/jobs/${job.id}`)).draft;};
+    await win.loadURL(origin);await wait(`!!document.querySelector('.recent-job')`);await js(`document.querySelector('.recent-job').click()`);
+    await wait(`!document.getElementById('github-card').disabled`);
+    await click('edit-view');await click('github-card');
+    const card={icon:'📚',categoryLabel:'Java Collection',topic:'Stack & Deque',sourceLabel:'Problem Source',url:'https://github.com/example/Sw_Pilot_Java/tree/main/Chapter_2/Step2/src',linkText:'GitHub - Sw_Pilot_Java (Chapter 2 / Step 2 - 3)',description:'LIFO 구조인 스택의 개념과 사용법, 그리고 현대적인 대체제인 Deque를 알아봅니다.'};
+    for (const [key,value] of Object.entries(card)) await fill(`github-${key}`,value);
+    assert.equal(await js(`document.getElementById('modal').open`),true);
+    assert.equal(await js(`document.querySelector('#github-card-preview .hdev-github-link').getAttribute('href')`),card.url);
+    assert.equal(await js(`getComputedStyle(document.querySelector('#github-card-preview .hdev-github-card')).backgroundColor`),'rgb(246, 248, 250)');
+    await capture('card-form');
+    await js(`Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async text=>{window.copiedCardHtml=text}}})`);
+    await click('github-copy');
+    const copied=await js('window.copiedCardHtml');assert.match(copied,/background-color:#f6f8fa/);assert.match(copied,/target="_blank"/);assert.ok(copied.includes(card.url));
+    await click('github-apply');
+    assert.equal(await js(`document.getElementById('modal').open`),false);
+    assert.equal(await js(`document.getElementById('article-preview').hidden`),false);
+    assert.equal(await js(`document.querySelector('#article-preview [data-hdev-toc]').nextElementSibling.getAttribute('data-hdev-github-card')`),'true');
+    assert.equal(await js(`document.querySelectorAll('#article-preview .hdev-github-card').length`),1);
+    assert.deepEqual((await saved()).githubCard,card);
+    await js(`document.getElementById('toast').hidden=true;document.getElementById('article-preview').scrollIntoView({block:'start'})`);await capture('below-toc');
+    await win.reload();await wait(`!!document.querySelector('#article-preview .hdev-github-card')`);
+    await click('github-card');assert.equal(await js(`document.getElementById('github-topic').value`),card.topic);
+    await fill('github-url','javascript:alert(1)');await click('github-apply');
+    assert.equal(await js(`document.getElementById('github-card-error').hidden`),false);
+    await click('github-cancel');assert.deepEqual((await request(`/api/jobs/${job.id}`)).draft.githubCard,card);
+    await click('github-card');await fill('github-description','바꾼 설명도 보관하고 다시 생성할 때 유지합니다.');await click('github-apply');
+    const edited=(await saved()).githubCard;
+    await click('generate');await wait(`document.getElementById('github-card').disabled`);
+    await wait(`!document.getElementById('generate').disabled`);
+    assert.deepEqual((await request(`/api/jobs/${job.id}`)).draft.githubCard,edited);
+    assert.equal(await js(`document.querySelector('#article-preview .hdev-github-description').textContent`),edited.description);
+    win.setSize(390,900);await pause(180);
+    await js(`if(document.getElementById('sidebar-toggle').getAttribute('aria-expanded')==='true')document.getElementById('sidebar-toggle').click();document.querySelector('#article-preview .hdev-toc').scrollIntoView({block:'start'});document.getElementById('toast').hidden=true;`);
+    await capture('mobile-card');assert.ok(await js(`document.documentElement.scrollWidth<=innerWidth`));
+    await click('github-card');await capture('mobile-form');
+    assert.ok(await js(`document.getElementById('modal').scrollWidth<=document.getElementById('modal').clientWidth`));
+    await click('github-remove');assert.equal(await js(`document.querySelectorAll('#article-preview .hdev-github-card').length`),0);
+    assert.equal((await saved()).githubCard,undefined);
+    await win.reload();await wait(`!!document.querySelector('#article-preview h1')`);
+    assert.equal(await js(`document.getElementById('github-card').getAttribute('aria-pressed')`),'false');
+    assert.deepEqual(errors,[]);
+    console.log(JSON.stringify({ok:true,checks:['add and edit GitHub card','exact design and hyperlink','placement below TOC','copy standalone HTML','save and reload','reject unsafe URL','preserve on regeneration','remove and reopen','mobile card and form'],screenshots}));
+    win.destroy();await new Promise(resolve=>server.close(resolve));app.exit(0);
+  } catch(error) {console.error(error);if(win&&!win.isDestroyed())win.destroy();server.close();app.exit(1);}
+}
+run();

@@ -146,3 +146,17 @@ test('publication does not claim success when a selected cover was not verified'
   publications.start({job,directory,expectedDigest:draftDigest(directory)});
   assert.equal((await settle(publications,job)).phase,'uncertain');
 });
+
+test('the configured skin TOC mode reaches the publisher without removing article headings', async t => {
+  const {job,directory,draft}=fixture(t);
+  draft.blocks.unshift({type:'heading',text:'본문 소제목'});
+  fs.writeFileSync(path.join(directory,'draft.json'),JSON.stringify(draft));
+  let received;
+  const publications=createPublications({blogUrl,tocMode:'skin',adapter:async request=>{
+    received=request;request.beforeSubmit();return receipt(request.draft);
+  }});
+  publications.start({job,directory,expectedDigest:draftDigest(directory)});
+  assert.equal((await settle(publications,job)).phase,'published');
+  assert.equal(received.includeToc,false);
+  assert.deepEqual(received.draft.blocks[0],draft.blocks[0]);
+});

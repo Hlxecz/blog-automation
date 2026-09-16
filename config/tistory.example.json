@@ -1,5 +1,6 @@
 {
   "blogUrl": "https://your-blog.tistory.com",
+  "tocMode": "article",
   "inbox": "inbox",
   "output": "drafts",
   "styleSamples": "style/samples",
