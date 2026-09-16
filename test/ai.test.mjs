@@ -24,6 +24,7 @@ const message=JSON.parse(input);assert.equal(message.type,'user');assert.equal(m
 if(!prompt.includes('<samples>')){const image=message.message.content[1];assert.equal(image.source.media_type,'image/png');assert.ok(Buffer.from(image.source.data,'base64').subarray(1,4).equals(Buffer.from('PNG')));}}
 else{assert.equal(args[0],'exec');assert.equal(args[args.indexOf('--sandbox')+1],'read-only');assert.ok(args.includes('--ignore-user-config'));if(!prompt.includes('<samples>'))assert.ok(fs.existsSync(args[args.indexOf('--image')+1]));}
 if(mode==='failure'){console.log(JSON.stringify({type:'result',subtype:'error_during_execution',is_error:true,errors:['quota exceeded']}));process.exit(1);}
+if(prompt.includes('가상 기록')){const references=JSON.parse(prompt.split('<references>')[1].split('</references>')[0]);assert.equal(references[0].text,'참고한 문서 본문');assert.equal(references[0].url,'https://example.com/docs');assert.equal(references[0].status,'read');}
 const result=prompt.includes('<samples>')?{profile:'짧고 정확한 존댓말로 작성해요.'}:{draft:{title:'이미지로 확인한 기록',tags:[],blocks:[]},analysis:'한글 분석 '.repeat(10000),review:'',sensitiveImages:[]};
 if(claude){const output=JSON.stringify({type:'result',subtype:'success',is_error:false,structured_output:result});for(let i=0;i<output.length;i+=3000)process.stdout.write(output.slice(i,i+3000));}
 else fs.writeFileSync(args[args.indexOf('--output-last-message')+1],JSON.stringify(result));`);
@@ -38,7 +39,7 @@ test('both CLI protocols receive actual image bytes/paths and return large Korea
   for (const provider of ['codex', 'claude']) {
     const auth = await checkAI(provider); assert.deepEqual(auth, { provider, status: 'connected', connected: true });
     assert.equal(JSON.stringify(auth).includes('private@'), false);
-    const result = await generate({ root, directory: root, title: '가상 기록', notes: '자료', style: '짧게 작성', provider });
+    const result = await generate({ root, directory: root, title: '가상 기록', notes: '자료', style: '짧게 작성', provider, references:[{url:'https://example.com/docs',text:'참고한 문서 본문',status:'read'}] });
     assert.equal(result.draft.title, '이미지로 확인한 기록'); assert.equal(result.analysis, '한글 분석 '.repeat(10000));
     assert.deepEqual(await analyzeWritingStyle({ provider, samples: [{ text: '본문' }] }), { profile: '짧고 정확한 존댓말로 작성해요.' });
   }

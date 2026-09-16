@@ -113,7 +113,7 @@ function editorCommand(command, data) {
 }
 
 export function createTistoryPublisher({ openWindow, fetchPublic = fetch, onDryRun = null }) {
-  return async ({ blogUrl, draft, manifest, directory, onProgress, beforeSubmit }) => {
+  return async ({ blogUrl, draft, manifest, directory, onProgress, beforeSubmit, includeToc = true }) => {
     const blog = new URL(blogUrl);
     if (blog.protocol !== 'https:' || !/^[a-z0-9-]+\.tistory\.com$/.test(blog.hostname) || blog.username || blog.password || blog.port)
       error('발행할 티스토리 블로그 주소가 올바르지 않습니다.');
@@ -181,7 +181,7 @@ export function createTistoryPublisher({ openWindow, fetchPublic = fetch, onDryR
       }
       if (wc.debugger.isAttached()) wc.debugger.detach();
       onProgress('filling', '검토한 제목·본문·사진·태그를 편집기에 입력하고 있어요.');
-      const html = publicationHtml(draft, manifest, uploaded);
+      const html = publicationHtml(draft, manifest, uploaded, { includeToc });
       await evalEditor('fill', { title: draft.title, html });
       win.show(); win.focus();
       for (const tag of draft.tags) {

@@ -125,3 +125,68 @@ input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px soli
 .archive-actions .button{min-height:40px;padding:10px 20px;font-size:13px}.archive-empty+.archive-actions{padding-bottom:12px}
 .archive-row .archive-item{border-radius:6px;padding:16px 8px}.archive-row .archive-item:hover{background:var(--surface)}
 @media(max-width:480px){.ai-options{gap:8px}.ai-options label{padding:12px 9px;gap:7px}.ai-options strong{font-size:13px}.ai-options small{font-size:10px}.ai-connection{flex-wrap:wrap}.ai-steps li{padding-left:29px}.ai-command{gap:6px;padding-left:9px}.ai-command code{font-size:11px}.archive-actions{flex-wrap:wrap}.archive-actions>span{width:100%;text-align:center}.archive-actions .button{width:100%}}
+/* Sources are kept with the photos and read when a draft is generated. */
+.references-section{margin-top:20px;padding-top:18px;border-top:1px solid var(--line)}
+.references-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.references-heading h3{font-size:12px;font-weight:650}.references-heading h3 span{font-size:10px;font-weight:400;color:var(--muted);margin-left:5px}
+.references-heading>span{font-size:10px;color:var(--muted);font-variant-numeric:tabular-nums}
+.references-heading>span{margin-left:auto}.references-heading .button{font-size:10px;padding:5px 8px}
+.reference-excerpt pre{white-space:pre-wrap;overflow-wrap:anywhere;font-family:inherit;font-size:11px;line-height:1.8;max-height:240px;overflow:auto;padding:10px;margin-top:8px;background:white;border:1px solid var(--line);border-radius:5px}
+.references-help{font-size:11px;line-height:1.8;color:var(--muted);margin:8px 0 12px}
+.reference-form{display:flex;gap:7px}.reference-form input{min-width:0;width:100%;border:1px solid var(--line);background:white;border-radius:6px;padding:9px 11px;font-size:12px;color:var(--ink)}
+.reference-form .button{flex-shrink:0;padding:8px 12px;font-size:11px}.reference-status{font-size:11px;color:#9a6700;line-height:1.7}.reference-status:empty{display:none}
+.reference-status{color:var(--muted)}.reference-status.error{color:#9a6700}
+.reference-list{display:grid;gap:9px;margin-top:12px}.reference-list:empty{display:none}
+.reference-item{border:1px solid var(--line);border-radius:6px;background:var(--surface);padding:10px 12px;min-width:0}
+.reference-row{display:flex;align-items:center;gap:8px}.reference-row a{min-width:0;flex:1;color:var(--accent);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.reference-row a:hover{text-decoration:underline}
+.reference-remove{flex-shrink:0;color:var(--muted);width:25px;height:25px;font-size:19px;border-radius:4px}.reference-remove:hover:enabled{color:#cf222e;background:#ffebe9}
+.reference-result{font-size:10px;color:var(--muted);line-height:1.7;overflow-wrap:anywhere}.reference-result.unavailable{color:#9a6700}
+.reference-item details{font-size:10px;margin-top:8px}.reference-item summary{cursor:pointer;color:var(--muted)}.reference-item label{display:block;color:var(--muted);line-height:1.8;margin:9px 0 7px}
+.reference-item textarea{display:block;width:100%;min-height:90px;resize:vertical;border:1px solid var(--line);border-radius:5px;background:white;padding:9px;color:var(--ink);font-size:11px;line-height:1.7}
+.reference-form input:focus,.reference-item textarea:focus{outline:2px solid var(--accent);outline-offset:-1px}
+
+.editor-help{font-size:11px;line-height:1.8;color:var(--muted);margin:14px 0 8px;word-break:keep-all}
+.draft-toolbar{flex-wrap:wrap;gap:12px}
+.draft-toolbar-actions{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-left:auto}
+.github-card-button{font-size:11px;padding:7px 10px;white-space:nowrap}
+.github-card-button[aria-pressed="true"]{border-color:var(--accent);color:var(--accent);background:var(--tint)}
+.github-card-form{display:grid;gap:13px}
+.github-card-intro{font-size:12px;line-height:1.8;margin:0 0 2px;color:var(--muted);word-break:keep-all}
+.github-card-form label{display:block;min-width:0;color:var(--ink);font-size:12px;font-weight:600}
+.github-card-form label>span{font-weight:400;font-size:10px;color:var(--muted);margin-left:5px}
+.github-form-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
+.github-icon-row{grid-template-columns:90px minmax(0,1fr)}
+.github-card-form input,#modal-content .github-card-form textarea{display:block;width:100%;border:1px solid var(--line);border-radius:6px;padding:8px 10px;font-size:12px;font-weight:400;color:var(--ink);background:white;margin:5px 0 0;line-height:1.6}
+#modal-content .github-card-form textarea{min-height:62px;resize:vertical}
+.github-card-form input:focus,.github-card-form textarea:focus{outline:2px solid var(--accent);outline-offset:-1px}
+.github-preview-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:11px;margin-top:2px}
+.github-preview-heading .text-button{margin:0;font-size:11px}
+.github-card-preview{color:var(--muted);font-size:12px;line-height:1.8;min-width:0}
+.github-card-preview .hdev-github-card{margin-bottom:0}
+#modal-content .github-card-error{font-size:12px;color:#cf222e;margin:0}
+.github-card-actions{display:flex;align-items:center;gap:8px;border-top:1px solid var(--line);padding-top:14px}
+.github-card-actions>span{flex:1}.github-card-actions .text-button{font-size:11px;color:#cf222e;margin:0}
+@media(max-width:460px){.draft-toolbar-actions{margin-left:0;width:100%;justify-content:space-between}.github-card-form .github-form-row:not(.github-icon-row){grid-template-columns:1fr}.github-card-actions .button{padding:9px 11px}}
+#block-editor .edit-block{margin:0;border-color:var(--line)}
+.edit-block-label,.edit-block-actions{display:flex;align-items:center;gap:5px}
+.edit-block-header .block-drag-handle{display:grid;place-items:center;width:30px;height:30px;padding:5px;cursor:grab;touch-action:none}
+.block-drag-handle svg{pointer-events:none}
+.edit-block-header .block-drag-handle:active{cursor:grabbing}
+.edit-block-header button:disabled{cursor:default;opacity:.35}
+.edit-block:focus-within{border-color:var(--accent)}
+.edit-block-header button:focus-visible,.block-insert button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.edit-block.dragging{opacity:.45;border-style:dashed}
+.block-insert{position:relative;min-height:36px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:5px 0}
+.block-insert::before{content:'';position:absolute;top:18px;left:0;right:0;height:1px;background:var(--line-soft)}
+.block-insert-toggle{position:relative;z-index:1;background:white;border:1px solid transparent;border-radius:5px;color:var(--muted);font-size:10px;line-height:24px;padding:0 10px}
+.block-insert-toggle span{font-size:14px;vertical-align:-1px;margin-right:3px}
+.block-insert-toggle:hover:enabled,.block-insert-toggle[aria-expanded="true"]{background:var(--surface);border-color:var(--line);color:var(--accent)}
+.block-insert-options{position:relative;display:flex;flex-wrap:wrap;justify-content:center;gap:5px;width:100%;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:9px;margin:6px 0 3px}
+.block-insert-options button{font-size:11px;padding:7px 11px;border:1px solid var(--line);border-radius:5px;background:white;color:var(--ink)}
+.block-insert-options button:hover:enabled{border-color:var(--accent);color:var(--accent);background:var(--tint)}
+.is-dragging .block-insert::before{background:var(--line)}
+.is-dragging .block-insert>*,.block-insert::after{pointer-events:none}
+.block-insert.drop-target::before{height:3px;background:var(--accent);border-radius:2px}
+.block-insert.drop-target .block-insert-toggle{visibility:hidden}
+.block-insert.drop-target::after{content:'여기에 놓기';position:absolute;top:5px;background:var(--accent);color:white;border-radius:5px;padding:5px 12px;font-size:11px;line-height:16px}
+@media(max-width:760px){.editor-help{font-size:11px}.edit-block-header button{min-width:32px;min-height:32px}.block-insert{min-height:42px}.block-insert::before{top:21px}.block-insert-toggle{line-height:30px}.block-insert-options button{padding:9px 12px}.block-insert.drop-target::after{top:8px}}

@@ -4,6 +4,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { load } from 'cheerio';
 import { buildPreview } from './blog.mjs';
 import { manifestImage } from '../web/draft-model.js';
+import { articleStyles, normalizeGitHubCard } from '../web/article-renderer.js';
 
 const read = file => JSON.parse(fs.readFileSync(file, 'utf8'));
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -12,7 +13,7 @@ const reject = message => { throw Object.assign(new Error(message),{status:409})
 export const publicationBusy = phase => ['preparing','waiting_login','uploading','filling','submitting','verifying'].includes(phase);
 export const draftDigest = directory => hash(fs.readFileSync(path.join(directory,'draft.json')));
 
-export function createPublications({ adapter, blogUrl }) {
+export function createPublications({ adapter, blogUrl, tocMode = 'article' }) {
   const running = new Set();
   function state(job) {
     const file = path.join(job,'publication.json');
@@ -51,7 +52,7 @@ export function createPublications({ adapter, blogUrl }) {
       record={...record,phase,message}; save(file,record);
     };
     save(file,record); running.add(job);
-    Promise.resolve().then(()=>adapter({blogUrl,draft,manifest,directory:snapshot,onProgress:progress,
+    Promise.resolve().then(()=>adapter({blogUrl,draft,manifest,directory:snapshot,onProgress:progress,includeToc:tocMode !== 'skin',
       beforeSubmit:()=>{ record={...record,submittedAt:new Date().toISOString()}; progress('submitting','티스토리에 공개 발행을 요청하고 있어요.'); }
     })).then(result=>{
       const url=new URL(result.url);
@@ -70,8 +71,8 @@ export function createPublications({ adapter, blogUrl }) {
   return {state,start,isRunning:job=>running.has(job)};
 }
 
-export function publicationHtml(draft,manifest,uploaded) {
-  const {body,usedImages}=buildPreview(draft,manifest);
+export function publicationHtml(draft,manifest,uploaded, { includeToc = true } = {}) {
+  const {body,usedImages}=buildPreview(draft,manifest,{includeToc});
   const $=load(body,null,false);
   for (const name of usedImages) {
     const markup=uploaded[name]; if (!markup) throw new Error('업로드하지 않은 사진이 있습니다.');
@@ -81,8 +82,10 @@ export function publicationHtml(draft,manifest,uploaded) {
     for (const el of target.toArray()) {
       const imageCopy=load(markup,null,false);
       imageCopy('img').attr('alt',$(el).find('img').attr('alt'));
+      imageCopy('img').attr('style',articleStyles.image);
+      imageCopy('figure').attr('style',articleStyles.figure);
       const caption=$(el).find('figcaption').text(); imageCopy('figcaption').remove();
-      if (caption) {const fig=imageCopy('figure').first(); if(fig.length) fig.append(imageCopy('<figcaption></figcaption>').text(caption));}
+      if (caption) {const fig=imageCopy('figure').first(); if(fig.length) fig.append(imageCopy('<figcaption></figcaption>').attr('style',articleStyles.caption).text(caption));}
       $(el).replaceWith(imageCopy.html());
     }
   }
@@ -91,7 +94,7 @@ export function publicationHtml(draft,manifest,uploaded) {
 
 const normalize=s=>String(s||'').replace(/\s+/g,'');
 export function verifyPublishedHtml(html,draft,uploaded) {
-  const $=load(html); $('script,style,noscript').remove();
+  const $=load(html); $('script,style,noscript,.hdev-toc,[data-hdev-toc],#toc').remove();
   const title=$('meta[property="og:title"]').attr('content') || $('h1').first().text();
   if (title.trim()!==draft.title.trim()) return false;
   if (draft.cover) {
@@ -106,6 +109,15 @@ export function verifyPublishedHtml(html,draft,uploaded) {
   const text=normalize($('body').text());
   const pieces=draft.blocks.flatMap(b=>b.type==='image'?[]:b.type==='list'?b.items:b.type==='table'?[...b.headers,...b.rows.flat()]:[b.text]);
   if (pieces.some(p=>!text.includes(normalize(p)))) return false;
+  if (draft.githubCard) {
+    const card=normalizeGitHubCard(draft.githubCard);
+    if ([card.categoryLabel,card.topic,card.sourceLabel,card.linkText,card.description].some(part=>!text.includes(normalize(part)))) return false;
+    const link=$('a').toArray().some(el=>{
+      try {return new URL($(el).attr('href')).href===card.url && normalize($(el).text())===normalize(card.linkText);}
+      catch {return false;}
+    });
+    if (!link) return false;
+  }
   const sources=$('img').toArray().map(el=>$(el).attr('src')||'').join('\n');
   let decoded=sources; try {decoded=decodeURIComponent(sources);} catch {}
   for (const markup of Object.values(uploaded)) {

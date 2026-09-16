@@ -100,7 +100,7 @@ test('HTML preview escapes text, preserves code, and references only snapshot im
   assert.ok(html.includes('List&lt;String&gt; a;\n// 코드 유지'));
   assert.ok(html.includes('<br>다음 줄'));
   assert.ok(html.includes('images/02%20%EA%B2%B0%EA%B3%BC.png'));
-  assert.ok(html.includes('<td>&lt;내용&gt;</td>'));
+  assert.match(html, /<td\b[^>]*>&lt;내용&gt;<\/td>/);
   assert.equal(listJobs(root)[0].status, 'local_draft');
 });
 

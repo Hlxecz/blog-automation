@@ -7,6 +7,7 @@
   <title>H.Dev Studio · 개발 기록 작업실</title>
   <link rel="icon" href="/favicon.png" type="image/png" sizes="64x64">
   <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/article.css">
   <script type="module" src="/app.js"></script>
 </head>
 <body>
@@ -42,6 +43,16 @@
         <div id="upload-status" class="inline-status" role="status"></div>
         <div id="photo-list" class="photo-list" aria-label="업로드한 사진"></div>
         <p id="order-hint" class="order-hint" hidden>사진을 끌어 순서를 바꿀 수 있어요.</p>
+        <section class="references-section" aria-labelledby="references-heading">
+          <div class="references-heading"><h3 id="references-heading">참고자료 <span>선택</span></h3><span id="reference-count">0 / 5</span><button id="reference-read" type="button" class="button secondary" disabled>자료 읽기</button></div>
+          <p class="references-help" id="references-help">블로그·문서·공개 노션 링크를 남겨 주세요.<br>자료 읽기로 확인하고, 초안을 만들 때 함께 참고해요.</p>
+          <form id="reference-form" class="reference-form">
+            <input id="reference-url" type="url" maxlength="2048" placeholder="https://…" aria-label="참고자료 링크" aria-describedby="references-help" required>
+            <button id="reference-add" type="submit" class="button secondary">추가</button>
+          </form>
+          <p id="reference-status" class="reference-status" role="status"></p>
+          <div id="reference-list" class="reference-list"></div>
+        </section>
         <div class="materials-form">
           <label for="topic">어떤 작업을 기록할까요? <span>선택</span></label>
           <input id="topic" maxlength="200" placeholder="예: Redis 연결 오류를 해결한 과정">
@@ -54,7 +65,7 @@
       </section>
 
       <section class="draft-panel" aria-labelledby="draft-heading">
-        <div class="panel-heading draft-toolbar"><h2 id="draft-heading"><span data-icon="file"></span> 글 미리보기</h2><div class="view-switch" role="group" aria-label="글 보기 모드"><button id="edit-view" aria-pressed="false">편집</button><button id="preview-view" class="active" aria-pressed="true">미리보기</button></div></div>
+        <div class="panel-heading draft-toolbar"><h2 id="draft-heading"><span data-icon="file"></span> 글 미리보기</h2><div class="draft-toolbar-actions"><button id="github-card" class="button secondary github-card-button" aria-pressed="false" disabled><span data-icon="github"></span> GitHub 카드</button><div class="view-switch" role="group" aria-label="글 보기 모드"><button id="edit-view" aria-pressed="false">편집</button><button id="preview-view" class="active" aria-pressed="true">미리보기</button></div></div></div>
         <div id="changed-banner" class="changed-banner" hidden>자료가 바뀌었어요. 기존 글은 보관되어 있으며, 다시 생성하면 새 자료를 반영합니다.</div>
         <section id="cover-section" class="cover-section" aria-label="글 표지" hidden>
           <div id="cover-preview" class="cover-preview"></div>
@@ -66,8 +77,15 @@
         </section>
         <div class="paper-area">
           <div id="empty-draft" class="empty-draft"><div class="empty-mark" aria-hidden="true"><span data-icon="feather"></span></div><span class="paper-label">아직 쓰이지 않은 이야기</span><h3>작업의 순간들이<br>하나의 글이 될 거예요.</h3><p>사진을 올리고 초안 만들기를 눌러보세요.<br>제목부터 설명, 사진 배치까지 함께 정리해요.</p><div class="empty-lines" aria-hidden="true"><i></i><i></i><i></i></div><button id="manual-start" class="text-button" disabled>직접 작성하기</button></div>
-          <article id="article-preview" class="article-preview" hidden></article>
-          <div id="article-editor" class="article-editor" hidden><label class="sr-only" for="draft-title">글 제목</label><input id="draft-title" class="draft-title" placeholder="제목을 입력하세요"><label class="sr-only" for="draft-tags">태그</label><input id="draft-tags" class="draft-tags" placeholder="태그를 쉼표로 구분해 입력"><div id="block-editor"></div><div class="add-block"><select id="block-type" aria-label="추가할 내용 유형"><option value="paragraph">문단</option><option value="heading">소제목</option><option value="code">코드</option><option value="list">목록</option><option value="image">사진</option></select><button id="add-block" class="text-button">＋ 내용 추가</button></div></div>
+          <article id="article-preview" class="article-preview hdev-article" hidden></article>
+          <div id="article-editor" class="article-editor" hidden>
+            <label class="sr-only" for="draft-title">글 제목</label><input id="draft-title" class="draft-title" placeholder="제목을 입력하세요">
+            <label class="sr-only" for="draft-tags">태그</label><input id="draft-tags" class="draft-tags" placeholder="태그를 쉼표로 구분해 입력">
+            <p class="editor-help">왼쪽 손잡이를 끌어 순서를 바꾸고, 항목 사이의 <strong>＋</strong>로 내용을 넣어보세요.</p>
+            <div id="editor-status" class="sr-only" role="status" aria-live="polite"></div>
+            <div id="block-editor"></div>
+            <div class="add-block"><select id="block-type" aria-label="추가할 내용 유형"><option value="paragraph">문단</option><option value="heading">소제목</option><option value="code">코드</option><option value="list">목록</option><option value="image">사진</option><option value="table">비교 표</option></select><button id="add-block" class="text-button">＋ 맨 뒤에 추가</button></div>
+          </div>
         </div>
         <div class="draft-footer"><span id="word-count">사진과 글이 함께 표시됩니다</span><span><span class="small-dot"></span> 발행 전, 내가 한 번 더</span></div>
       </section>

@@ -24,7 +24,7 @@
 
 ## Windows 앱 다운로드
 
-[H.Dev Studio 0.4.0 다운로드](https://github.com/Hlxecz/blog-automation/releases/tag/v0.4.0)에서 `HDev-Studio-0.4.0-win-x64.exe`를 받아 실행하세요. 설치가 필요 없는 Windows 64비트 앱입니다.
+[H.Dev Studio 0.5.0 다운로드](https://github.com/Hlxecz/blog-automation/releases/tag/v0.5.0)에서 `HDev-Studio-0.5.0-win-x64.exe`를 받아 실행하세요. 설치가 필요 없는 Windows 64비트 앱입니다.
 
 처음 실행하면 **작업실 → 자료 폴더 열기**에서 `tistory.config.json`의 `blogUrl`을 본인 블로그 주소로 바꾸고 앱을 다시 실행합니다. **도움말 · AI 연결**에서 Codex 또는 Claude Code를 선택하고 본인 계정으로 로그인하세요. [자세한 사용 안내](docs/USAGE.md)를 참고하세요.
 
@@ -33,6 +33,9 @@
 - 사진 업로드, 순서 변경, 작업 메모
 - Codex / Claude Code CLI 선택, 설치·로그인 도움말, 이미지 분석과 초안 생성
 - 제목·본문·태그 편집과 미리보기
+- 편집 항목 드래그 이동과 항목 사이에 문단·사진·코드·표 추가
+- 참고자료 링크 최대 5개, 공개 노션 본문 읽기와 직접 붙여 넣기
+- 자동 목차, 팁·주의 상자, 목차 아래 GitHub 정보 카드
 - 기존 사진에서 표지 선택 또는 별도 표지 업로드
 - 로컬 초안 보관, 용량 확인, 글 단위 삭제
 - 여러 티스토리 블로그의 공개 글 목록과 로그인된 글 관리 화면
@@ -83,6 +86,7 @@ npm run build:exe
 | --- | --- |
 | [사용 안내](docs/USAGE.md) | 설치, AI, 표지, 보관·삭제, 발행 상태와 검증 한계 |
 | [변경 내역](CHANGELOG.md) | 버전별 기능·수정 이력 |
+| [트러블슈팅 기록](docs/TROUBLESHOOTING.md) | 제작 과정의 문제·원인·해결·검증 범위 |
 | [버전·배포 관리](docs/RELEASING.md) | 버전 규칙, EXE, GitHub 업로드 절차 |
 | [글쓰기 규칙](docs/WRITING.md) | 캡처 분석, 말투 참고, 초안 형식 |
 | [작업 지침](AGENTS.md) | 에이전트의 작업 범위와 자료 보호 |

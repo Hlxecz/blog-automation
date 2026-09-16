@@ -41,8 +41,12 @@ let win;
 const openWindow = url => { win = new BrowserWindow({ show: false, webPreferences: { session: isolated, sandbox: true, contextIsolation: true, nodeIntegration: false } }); win.loadURL(url); return win; };
 fs.mkdirSync(path.join(root, 'images'));
 for (const file of ['one.png', 'two.png', 'cover.png']) fs.writeFileSync(path.join(root, 'images', file), png);
-const draft = { title: '검증한 글', tags: ['Redis', '테스트'], cover:'one.png', blocks: [
+const draft = { title: '검증한 글', tags: ['Redis', '테스트'], cover:'one.png',
+  githubCard:{icon:'📚',categoryLabel:'주제',topic:'연결 오류 해결',sourceLabel:'GitHub',url:'https://github.com/example/project',linkText:'관련 코드',description:'설정과 확인 과정을 정리합니다.'}, blocks: [
+  { type: 'heading', text: '문서 디자인 확인' },
   { type: 'paragraph', text: '입력한 본문입니다.\n줄바꿈도 확인합니다.' },
+  { type: 'paragraph', text: '💡 팁 | 확인 기준\n사진과 설명을 함께 확인합니다.' },
+  { type: 'paragraph', text: '⚠️ 주의 | 검토 항목\n입력한 내용을 유지합니다.' },
   { type: 'image', file: 'two.png', alt: '두 번째 사진', caption: '먼저 놓은 사진' },
   { type: 'code', text: 'console.log("test");' },
   { type: 'image', file: 'one.png', alt: '첫 번째 사진', caption: '' }
@@ -58,6 +62,12 @@ try {
     assert.match(first,/첫 번째 사진/);
     assert.match(first,/test-photo\/1\.png/);
     assert.equal(await win.webContents.executeJavaScript('document.querySelectorAll("#body img").length'),2);
+    assert.equal(await win.webContents.executeJavaScript('document.querySelectorAll("#body .hdev-toc a").length'),1);
+    assert.equal(await win.webContents.executeJavaScript('document.querySelector("#body .hdev-toc").nextElementSibling.getAttribute("data-hdev-github-card")'),'true');
+    assert.equal(await win.webContents.executeJavaScript('document.querySelector("#body .hdev-github-link").href'),draft.githubCard.url);
+    assert.equal(await win.webContents.executeJavaScript('document.querySelector("#body .hdev-github-card").style.backgroundColor'),'rgb(246, 248, 250)');
+    assert.equal(await win.webContents.executeJavaScript('document.querySelector("#body .hdev-tip").style.borderLeftWidth'),'4px');
+    assert.equal(await win.webContents.executeJavaScript('document.querySelector("#body .hdev-warning").style.backgroundColor'),'rgb(255, 248, 237)');
     return new Response(await win.webContents.executeJavaScript('window.published'));
   } });
   const result = await publisher({ blogUrl: 'https://example.tistory.com', draft, manifest, directory: root,
@@ -70,9 +80,12 @@ try {
     assert.equal(await win.webContents.executeJavaScript('window.submits'), 0);
     assert.equal(await win.webContents.executeJavaScript('document.querySelectorAll("#body img").length'),3);
     assert.equal(await win.webContents.executeJavaScript('document.querySelector("#body img").alt'),'검증한 글 표지');
+    assert.equal(await win.webContents.executeJavaScript('document.querySelectorAll("#body .hdev-toc").length'),0);
+    assert.equal(await win.webContents.executeJavaScript('document.querySelector("#body").firstElementChild.getAttribute("data-hdev-github-card")'),'true');
+    assert.equal(await win.webContents.executeJavaScript('document.querySelectorAll("#body h2").length'),1);
   } });
   await assert.rejects(dry({ blogUrl: 'https://example.tistory.com', draft:{...draft,cover:'cover.png'}, manifest:{...manifest,coverImages:[{name:'cover.png',sha256:createHash('sha256').update(png).digest('hex')}]}, directory: root,
-    onProgress: () => {}, beforeSubmit: () => assert.fail('dry run must never submit') }), /검증 모드/);
+    includeToc:false,onProgress: () => {}, beforeSubmit: () => assert.fail('dry run must never submit') }), /검증 모드/);
   console.log('PASS: Electron file chooser, selected cover uploaded and placed first without duplicates, ordered body, tags, public selection, one submission, public verification, and dry run. No real Tistory requests.');
   win.destroy(); app.exit(0);
 } catch (error) { console.error(error); win?.destroy(); app.exit(1); }

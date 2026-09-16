@@ -3,6 +3,8 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { articleBlocks, manifestImage } from '../web/draft-model.js';
+import { articleAttributes, articleCss, renderArticleContent } from '../web/article-renderer.js';
+import { readReferences } from './references.mjs';
 
 const PROJECT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const IMAGE = /\.(png|jpe?g|webp)$/i;
@@ -56,8 +58,10 @@ function snapshot(job) {
   const noteFile = path.join(job, 'notes.md');
   if (fs.existsSync(noteFile)) realFile(noteFile);
   const notes = fs.existsSync(noteFile) ? fs.readFileSync(noteFile, 'utf8') : '';
-  const digest = sha(JSON.stringify({ images, notes }));
-  return { digest, images, notes };
+  const references = readReferences(job);
+  // Preserve all existing input digests when a job has no reference material.
+  const digest = sha(JSON.stringify({ images, notes, ...(references.length ? { references } : {}) }));
+  return { digest, images, notes, references };
 }
 
 export function newJob(root, id) {
@@ -117,6 +121,8 @@ export function prepareJob(root, id) {
       check(fs.existsSync(file) && sha(fs.readFileSync(file)) === image.sha256, '보관 이미지가 변경됐습니다. 원본과 비교해 복구하세요.');
     }
     check(fs.readFileSync(path.join(dest, 'notes.md'), 'utf8') === input.notes, '보관 메모가 변경됐습니다.');
+    check(JSON.stringify(readReferences(dest)) === JSON.stringify(input.references), '보관 참고자료가 변경됐습니다.');
+    check(JSON.stringify(manifest.references || []) === JSON.stringify(input.references), '보관 참고자료 목록이 변경됐습니다.');
     return { directory: dest, reused: true };
   }
   fs.mkdirSync(path.join(dest, 'images'), { recursive: true });
@@ -126,9 +132,11 @@ export function prepareJob(root, id) {
     fs.writeFileSync(path.join(dest, 'images', img.name), bytes);
   }
   fs.writeFileSync(path.join(dest, 'notes.md'), input.notes);
+  if (input.references.length) writeJson(path.join(dest, 'references.json'), input.references);
   check(snapshot(job).digest === input.digest, '준비 중 원본이 바뀌었습니다. ready를 다시 실행하세요.');
   const manifest = { id, inputDigest: input.digest, preparedAt: new Date().toISOString(),
-    blogUrl: c.blogUrl, images: input.images, styleSamples: c.styleSamples, styleProfile: c.styleProfile };
+    blogUrl: c.blogUrl, images: input.images, styleSamples: c.styleSamples, styleProfile: c.styleProfile,
+    ...(input.references.length ? { references: input.references } : {}) };
   fs.writeFileSync(path.join(dest, 'task.md'),
     `이 프로젝트의 AGENTS.md와 docs/WRITING.md를 읽고 다음 입력으로 티스토리 임시저장 초안을 처리하세요.\n\n` +
     `작업 폴더: ${dest}\n블로그: ${c.blogUrl || '미설정 — 주소 필요'}\n` +
@@ -147,7 +155,7 @@ function requiredText(value, label) {
   return value;
 }
 
-export function buildPreview(draft, manifest) {
+export function buildPreview(draft, manifest, { includeToc = true } = {}) {
   const title = requiredText(draft.title, 'title');
   check(Array.isArray(draft.blocks) && draft.blocks.length, 'blocks가 비어 있습니다.');
   check(Array.isArray(draft.tags) && draft.tags.every(t => typeof t === 'string'), 'tags는 문자열 배열이어야 합니다.');
@@ -157,37 +165,20 @@ export function buildPreview(draft, manifest) {
     imageMap.set(draft.cover, manifestImage(manifest, draft.cover));
   }
   const usedImages = new Set();
-  const blocks = articleBlocks(draft).map(block => {
+  const blocks = articleBlocks(draft);
+  for (const block of blocks) {
     check(block && typeof block === 'object', '각 block은 객체여야 합니다.');
-    switch (block.type) {
-      case 'heading': return `<h2>${escapeHtml(requiredText(block.text, 'heading.text'))}</h2>`;
-      case 'paragraph': return `<p>${escapeHtml(requiredText(block.text, 'paragraph.text')).replace(/\n/g, '<br>')}</p>`;
-      case 'code': return `<pre><code>${escapeHtml(requiredText(block.text, 'code.text'))}</code></pre>`;
-      case 'list':
-        check(Array.isArray(block.items) && block.items.length, 'list.items가 비어 있습니다.');
-        return `<ul>${block.items.map(t => `<li>${escapeHtml(requiredText(t, 'list item'))}</li>`).join('')}</ul>`;
-      case 'table':
-        check(Array.isArray(block.headers) && block.headers.length && Array.isArray(block.rows), 'table.headers / rows가 필요합니다.');
-        return `<table><thead><tr>${block.headers.map(t => `<th>${escapeHtml(requiredText(t, 'table header'))}</th>`).join('')}</tr></thead><tbody>` +
-          block.rows.map(row => {
-            check(Array.isArray(row) && row.length === block.headers.length && row.every(t => typeof t === 'string'), '표의 열 수와 문자열 값을 확인하세요.');
-            return `<tr>${row.map(t => `<td>${escapeHtml(t)}</td>`).join('')}</tr>`;
-          }).join('') + '</tbody></table>';
-      case 'image': {
-        const item = imageMap.get(block.file);
-        check(item && path.basename(block.file) === block.file, `입력에 없는 이미지입니다: ${block.file}`);
-        usedImages.add(block.file);
-        return `<figure><img src="images/${encodeURIComponent(block.file)}" alt="${escapeHtml(requiredText(block.alt, 'image.alt'))}">` +
-          `${block.caption ? `<figcaption>${escapeHtml(block.caption)}</figcaption>` : ''}</figure>`;
-      }
-      default: throw new Error(`지원하지 않는 block.type: ${block.type}`);
+    if (block.type === 'image') {
+      const item = imageMap.get(block.file);
+      check(item && path.basename(block.file) === block.file, `입력에 없는 이미지입니다: ${block.file}`);
+      usedImages.add(block.file);
     }
-  });
-  const body = blocks.join('\n');
+  }
+  const body = renderArticleContent(blocks, { includeToc, githubCard:draft.githubCard });
   const html = `<!doctype html>\n<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">\n` +
     `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' file:; style-src 'unsafe-inline'">\n` +
-    `<title>${escapeHtml(title)}</title><style>body{max-width:800px;margin:48px auto;padding:0 24px;color:#242424;font:17px/1.85 system-ui,sans-serif}h1{font-size:32px;line-height:1.4}h2{margin-top:2em}img{max-width:100%;height:auto}figure{margin:32px 0}figcaption{font-size:14px;color:#666}pre{padding:20px;background:#f3f4f6;overflow:auto}code{font-family:Consolas,monospace}table{border-collapse:collapse;width:100%;font-size:15px}th,td{border:1px solid #ddd;padding:10px;text-align:left}.status{font-size:14px;color:#666;border-bottom:1px solid #ddd;padding-bottom:16px}</style></head>\n` +
-    `<body><p class="status">로컬 검토용 초안 · 티스토리 저장 여부는 별도 확인</p><h1>${escapeHtml(title)}</h1>${body}</body></html>\n`;
+    `<title>${escapeHtml(title)}</title><style>body{max-width:760px;margin:40px auto;padding:0 20px}.status{font-size:13px;color:#607286;border-bottom:1px solid #dbe3ec;padding-bottom:16px;margin-bottom:28px}${articleCss}</style></head>\n` +
+    `<body class="hdev-article"><p class="status">로컬 검토용 초안 · 티스토리 저장 여부는 별도 확인</p><h1 ${articleAttributes('title')}>${escapeHtml(title)}</h1>${body}</body></html>\n`;
   return { html, body, usedImages: [...usedImages] };
 }
 

@@ -1,10 +1,12 @@
 import { articleBlocks } from './draft-model.js';
+import { renderArticleContent, renderGitHubCard, normalizeGitHubCard } from './article-renderer.js';
 import { initStyleSettings } from './style-settings.js';
 import { createAIHelp, connectionMessage } from './ai-help.js';
 
 const $ = id => document.getElementById(id);
 const escape = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]);
 const icons = {
+  github:'<path d="M9 19c-4.3 1.3-4.3-2.5-6-3m12 6v-3.5c0-1 .1-1.6-.5-2.2 3-.3 6.2-1.5 6.2-6.8A5.3 5.3 0 0 0 19.3 6c.1-.3.6-1.7-.1-3.5 0 0-1.2-.4-3.8 1.4a13.4 13.4 0 0 0-6.8 0C6 2.1 4.8 2.5 4.8 2.5 4.1 4.3 4.6 5.7 4.7 6a5.3 5.3 0 0 0-1.4 3.5c0 5.3 3.2 6.5 6.2 6.8-.5.5-.7 1.2-.5 2.2V22"/>',
   layout:'<rect x="3" y="3" width="18" height="18" rx="3"/><path d="M9 3v18"/>',
   archive:'<rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v12h14V8M10 12h4"/>',
   feather:'<path d="M20 3c-5-1-13 3-13 10v4h4c6 0 10-8 9-14ZM4 21 16 9M7 17h6M11 13V9"/>',
@@ -21,11 +23,15 @@ const icons = {
 document.querySelectorAll('[data-icon]').forEach(el => { el.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[el.dataset.icon] || ''}</svg>`; });
 
 let token, settings, jobs = [], current = null, draft = null, mode = 'preview';
+let references = [];
+let referenceTimer, referenceStarting = false;
 let draftDirty = false, materialDirty = false, materialVersion = 0, saveTimer, pollTimer, toastTimer;
 let saveQueue = Promise.resolve(), uploadBusy = false, switching = false, publishStarting = false, publishTimer;
 let deleting = false, draftSave = Promise.resolve();
+let blockDrag = null;
+const blockLabels = {paragraph:'문단',heading:'소제목',code:'코드',list:'목록',image:'사진',table:'비교 표'};
 const isPublishing = p => ['preparing','waiting_login','uploading','filling','submitting','verifying'].includes(p?.phase);
-const busy = (allowPublicationSave = false) => deleting || uploadBusy || (!allowPublicationSave && publishStarting) || current?.generation.phase === 'generating' || isPublishing(current?.publication);
+const busy = (allowPublicationSave = false) => referenceStarting || current?.referenceRead?.phase === 'reading' || deleting || uploadBusy || (!allowPublicationSave && publishStarting) || current?.generation.phase === 'generating' || isPublishing(current?.publication);
 
 async function api(url, options = {}) {
   const response = await fetch(url, { ...options, headers: { 'X-App-Token': token || '', ...(options.json !== undefined ? { 'Content-Type': 'application/json' } : {}), ...options.headers }, body: options.json !== undefined ? JSON.stringify(options.json) : options.body });
@@ -64,7 +70,7 @@ async function saveMaterial(allowPublicationSave = false) {
   if (!materialDirty || busy(allowPublicationSave)) return saveQueue;
   await ensureJob();
   const id = current.id, version = materialVersion;
-  const body = { title:$('topic').value, notes:$('notes').value, order:current.images.map(i => i.name) };
+  const body = { title:$('topic').value, notes:$('notes').value, order:current.images.map(i => i.name), references:structuredClone(references) };
   const task = saveQueue.catch(() => {}).then(() => api(`/api/jobs/${id}`, { method:'PUT', json:body }));
   saveQueue = task;
   const saved = await task;
@@ -89,6 +95,73 @@ $('save-all').onclick = async () => { try { await saveAll(); toast(current ? '�
 $('topic').oninput = () => { $('breadcrumb-title').textContent = $('topic').value || '새로운 개발 기록'; markMaterial(); };
 $('notes').oninput = markMaterial;
 
+function resetReferenceForm() { $('reference-url').value = ''; $('reference-status').textContent = ''; $('reference-status').classList.remove('error'); }
+$('reference-form').onsubmit = event => {
+  event.preventDefault();
+  if (busy() || references.length >= 5) return;
+  try {
+    const url = new URL($('reference-url').value.trim());
+    if (url.protocol !== 'https:' || url.username || url.password || url.port || !url.hostname.includes('.') || /^[\d.]+$/.test(url.hostname) || /\.(localhost|local|internal)$/i.test(url.hostname)) throw new Error('공개 웹페이지의 https:// 주소를 입력해 주세요.');
+    url.hash = ''; const address = url.href.replace(/\/$/, '');
+    if (references.some(item => item.url === address)) throw new Error('이미 추가한 참고자료예요.');
+    references.push({ url:address, content:'' }); resetReferenceForm(); markMaterial(); renderReferences(); updateControls();
+    if (references.length < 5) $('reference-url').focus();
+  } catch (error) { $('reference-status').classList.add('error'); $('reference-status').textContent = error instanceof TypeError ? '올바른 링크를 입력해 주세요.' : error.message; }
+};
+function updateReferenceReports() {
+  const matching = JSON.stringify(references.map(item => ({ ...item, content:item.content.trim() }))) === JSON.stringify(current?.references || []);
+  document.querySelectorAll('.reference-result').forEach((node, index) => {
+    const reference = references[index];
+    const report = matching && current?.referenceReports?.find(item => item.url === reference.url);
+    const row = node.closest('.reference-item');
+    row.querySelector('a').textContent = report?.status === 'read' ? report.title : reference.url.replace('https://','');
+    row.querySelector('.reference-excerpt').hidden = !report?.excerpt;
+    row.querySelector('.reference-excerpt pre').textContent = report?.excerpt || '';
+    node.classList.toggle('unavailable', report?.status === 'unavailable');
+    node.textContent = report ? report.message : reference.content.trim() ? '붙여 넣은 내용을 다음 초안에 참고해요.' : '초안을 만들 때 본문을 읽어요.';
+  });
+}
+function renderReferences() {
+  const list = $('reference-list'); list.replaceChildren();
+  $('reference-count').textContent = `${references.length} / 5`;
+  references.forEach((reference, index) => {
+    const row = document.createElement('div'); row.className = 'reference-item';
+    row.innerHTML = `<div class="reference-row"><a href="${escape(reference.url)}" target="_blank" rel="noopener noreferrer" title="${escape(reference.url)}">${escape(reference.url.replace('https://',''))}</a><button type="button" class="reference-remove" aria-label="참고자료 ${index + 1} 삭제">×</button></div><p class="reference-result"></p><details class="reference-excerpt" hidden><summary>읽은 내용 미리보기</summary><pre></pre></details><details class="reference-paste"><summary>필요한 내용 직접 붙여 넣기</summary><label for="reference-content-${index}">비공개 노션이나 읽기 어려운 페이지는 필요한 내용을 붙여 넣어 주세요. 입력한 내용을 우선 참고해요.</label><textarea id="reference-content-${index}" rows="4" maxlength="10000" placeholder="참고할 내용 (최대 10,000자)"></textarea></details>`;
+    row.querySelector('textarea').value = reference.content;
+    row.querySelector('.reference-paste').open = !!reference.content;
+    row.querySelector('textarea').oninput = event => { reference.content = event.target.value; markMaterial(); updateReferenceReports(); };
+    row.querySelector('button').onclick = () => {
+      if (busy()) return;
+      references.splice(index,1); markMaterial(); renderReferences(); updateControls();
+    };
+    list.append(row);
+  });
+  updateReferenceReports();
+}
+
+$('reference-read').onclick = async () => {
+  if (busy() || !references.length) return;
+  try {
+    await saveAll(); referenceStarting = true; updateControls();
+    current = await api(`/api/jobs/${current.id}/references/read`,{method:'POST'});
+    pollReferences(current.id);
+  } catch(error) { toast(error.message,true); }
+  finally { referenceStarting = false; updateControls(); }
+};
+function pollReferences(id) {
+  clearTimeout(referenceTimer);
+  referenceTimer = setTimeout(async()=>{
+    try {
+      const next = await api(`/api/jobs/${id}`); if(current?.id!==id)return;
+      current = next; updateControls();
+      if(next.referenceRead.phase==='reading'){pollReferences(id);return;}
+      renderReferences();
+      $('reference-status').classList.toggle('error', next.referenceRead.phase==='error');
+      $('reference-status').textContent = next.referenceRead.phase==='error' ? next.referenceRead.message : '읽기 결과를 확인해 주세요. 초안을 만들 때 이 자료를 함께 참고해요.';
+    } catch(error) { toast(error.message,true); pollReferences(id); }
+  },800);
+}
+
 async function refreshJobs() {
   jobs = await api('/api/jobs');
   $('archive-count').textContent = jobs.filter(j => j.hasDraft).length;
@@ -100,11 +173,12 @@ async function refreshJobs() {
 }
 async function selectJob(id) {
   showWorkspace();
-  if (switching || publishStarting || deleting || uploadBusy) return;
+  if (switching || publishStarting || deleting || uploadBusy || referenceStarting) return;
   switching = true;
   try {
-    await saveAll(); clearTimeout(pollTimer);
+    await saveAll(); clearTimeout(pollTimer); clearTimeout(referenceTimer);
     current = await api(`/api/jobs/${id}`); draft = current.draft ? structuredClone(current.draft) : null;
+    references = structuredClone(current.references || []); resetReferenceForm(); renderReferences();
     draftDirty = false; materialDirty = false; localStorage.setItem('hdev.current', id);
     $('topic').value = current.title;
     $('notes').value = current.notes.startsWith('# 개발 메모 (선택)') ? '' : current.notes;
@@ -114,6 +188,7 @@ async function selectJob(id) {
     renderPhotos(); renderDraft(); updateControls(); await refreshJobs();
     saveStatus('이 PC에 보관됨');
     if (current.generation.phase === 'generating') pollGeneration(id);
+    if (current.referenceRead?.phase === 'reading') pollReferences(id);
     if (isPublishing(current.publication)) pollPublication(id);
   } finally { switching = false; updateControls(); }
 }
@@ -124,7 +199,9 @@ async function newPost() {
 }
 function clearWorkspace() {
   clearTimeout(saveTimer); clearTimeout(pollTimer); clearTimeout(publishTimer);
+  clearTimeout(referenceTimer);
   current = null; draft = null; draftDirty = false; materialDirty = false;
+  references = []; resetReferenceForm(); renderReferences();
   $('topic').value = ''; $('notes').value = ''; $('review-notes').value = ''; $('analysis-text').textContent = '';
   $('breadcrumb-title').textContent = '새로운 개발 기록'; localStorage.removeItem('hdev.current');
   renderPhotos(); renderDraft(); updateControls(); saveStatus('새로운 글을 시작해 보세요');
@@ -272,9 +349,20 @@ async function uploadFiles(files) {
 
 function updateControls() {
   const running = busy(), hasImages = !!current?.images.length;
+  const reading = referenceStarting || current?.referenceRead?.phase === 'reading';
+  $('reference-read').disabled = running || !references.length;
+  $('reference-read').textContent = reading ? '읽는 중…' : '자료 읽기';
+  if(reading){$('reference-status').classList.remove('error');$('reference-status').textContent = current?.referenceRead?.message || '참고자료의 본문을 확인하고 있어요.';}
+  $('reference-url').disabled = running || references.length >= 5;
+  $('reference-add').disabled = running || references.length >= 5;
+  $('reference-list').querySelectorAll('button,textarea').forEach(el => { el.disabled = running; });
+  updateReferenceReports();
   $('generate').disabled = running || !hasImages;
   $('manual-start').disabled = running || !hasImages;
   $('save-all').disabled = running;
+  $('github-card').disabled = running || !draft;
+  $('github-card').setAttribute('aria-pressed',String(!!draft?.githubCard));
+  $('github-card').title = draft?.githubCard ? 'GitHub 정보 카드 편집' : '목차 아래에 GitHub 정보 카드 추가';
   for (const id of ['choose-cover','upload-cover','reset-cover','cover-file-input']) $(id).disabled = running || !draft;
   $('delete-current').hidden = !current;
   $('delete-current').disabled = running || switching;
@@ -306,7 +394,12 @@ function updateControls() {
   $('review-section').hidden = !draft;
   $('article-editor').querySelectorAll('input,textarea,button,select').forEach(el => { el.disabled=running; });
   const editBlocks=$('block-editor').querySelectorAll('.edit-block');
-  editBlocks.forEach((el,index)=>{const buttons=el.querySelectorAll('.edit-block-header button');buttons[0].disabled=running||index===0;buttons[1].disabled=running||index===editBlocks.length-1;});
+  editBlocks.forEach((el,index)=>{
+    el.querySelector('.block-up').disabled=running||index===0;
+    el.querySelector('.block-down').disabled=running||index===editBlocks.length-1;
+    el.querySelector('.block-drag-handle').draggable=!running;
+  });
+  if (running) { clearBlockDrag(); closeBlockInsertMenus(); }
 }
 function updateFooter() {
   $('word-count').textContent = draft ? `${draft.blocks.reduce((n,b)=>n+(b.text||b.items?.join('')||b.caption||'').replace(/\s/g,'').length,0).toLocaleString()}자 · 사진 ${articleBlocks(draft).filter(b=>b.type==='image').length}장` : '사진과 글이 함께 표시됩니다';
@@ -364,42 +457,179 @@ $('cover-file-input').onchange = e => { const file = e.target.files[0]; e.target
 $('reset-cover').onclick = () => changeCover(null);
 function renderPreview() {
   if (!draft) return;
-  const content = articleBlocks(draft).map(b => {
-    if (b.type==='heading') return `<h2>${escape(b.text)}</h2>`;
-    if (b.type==='paragraph') return `<p>${escape(b.text).replace(/\n/g,'<br>')}</p>`;
-    if (b.type==='code') return `<pre><code>${escape(b.text)}</code></pre>`;
-    if (b.type==='list') return `<ul>${b.items.map(i=>`<li>${escape(i)}</li>`).join('')}</ul>`;
-    if (b.type==='table') return `<table><thead><tr>${b.headers.map(t=>`<th>${escape(t)}</th>`).join('')}</tr></thead><tbody>${b.rows.map(row=>`<tr>${row.map(t=>`<td>${escape(t)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
-    if (b.type==='image') return `<figure><img src="${escape(imageURL(b.file))}" alt="${escape(b.alt)}"><figcaption>${escape(b.caption)}</figcaption></figure>`;
-    return '';
-  }).join('');
-  $('article-preview').innerHTML = `<h1>${escape(draft.title)}</h1><div class="article-tags">${draft.tags.map(t=>`#${escape(t)}`).join(' &nbsp; ')}</div>${content}`;
+  const content = renderArticleContent(articleBlocks(draft), { inlineStyles:false, imageURL, githubCard:draft.githubCard });
+  $('article-preview').innerHTML = `<h1 class="hdev-title">${escape(draft.title)}</h1><div class="article-tags">${draft.tags.map(t=>`#${escape(t)}`).join(' &nbsp; ')}</div>${content}`;
 }
+$('github-card').onclick=()=>{
+  if (!draft || busy() || switching) return;
+  const targetDraft=draft;
+  const card=draft.githubCard || {icon:'📚',categoryLabel:'주제',topic:draft.title,sourceLabel:'GitHub',url:'',linkText:'관련 코드 보기',description:''};
+  const form=document.createElement('form'); form.className='github-card-form';
+  const input=(key,label,max,placeholder='',type='text')=>`<label for="github-${key}">${label}<input id="github-${key}" name="${key}" type="${type}" value="${escape(card[key])}" maxlength="${max}" placeholder="${escape(placeholder)}" required></label>`;
+  form.innerHTML=`<p class="github-card-intro">목차 아래에 주제와 코드 링크를 함께 보여줘요. 목차가 없는 글에서는 본문 맨 위에 표시해요.</p>
+    <div class="github-form-row github-icon-row">${input('icon','아이콘',20,'📚')}${input('categoryLabel','주제 분류',60,'Java Collection')}</div>
+    ${input('topic','주제',200,'Stack & Deque')}
+    ${input('url','GitHub · 참고 링크 주소',2048,'https://github.com/사용자/저장소','url')}
+    <div class="github-form-row">${input('sourceLabel','링크 분류',60,'Problem Source')}${input('linkText','링크 이름',200,'GitHub - 프로젝트 이름')}</div>
+    <label for="github-description">한 줄 설명 <span>선택</span><textarea id="github-description" name="description" maxlength="1000" rows="2" placeholder="이 글에서 다루는 내용을 짧게 소개하세요.">${escape(card.description)}</textarea></label>
+    <div class="github-preview-heading"><strong>카드 미리보기</strong><button id="github-copy" type="button" class="text-button">HTML 복사</button></div>
+    <div id="github-card-preview" class="github-card-preview hdev-article"></div>
+    <p id="github-card-error" class="github-card-error" role="alert" hidden></p>
+    <div class="github-card-actions"><button id="github-remove" type="button" class="text-button" ${draft.githubCard?'':'hidden'}>카드 빼기</button><span></span><button id="github-cancel" type="button" class="button secondary">취소</button><button id="github-apply" type="submit" class="button primary">${draft.githubCard?'카드 수정':'카드 추가'}</button></div>`;
+  const readCard=()=>normalizeGitHubCard(Object.fromEntries(new FormData(form)));
+  const preview=()=>{
+    form.querySelector('#github-card-error').hidden=true;
+    try {
+      form.querySelector('#github-card-preview').innerHTML=renderGitHubCard(readCard(),{inlineStyles:false});
+      form.querySelector('#github-copy').disabled=false;
+    } catch {
+      form.querySelector('#github-card-preview').textContent='주제와 링크 주소를 입력하면 카드가 여기에 보여요.';
+      form.querySelector('#github-copy').disabled=true;
+    }
+  };
+  const apply=value=>{
+    if (draft!==targetDraft || busy() || switching) return;
+    if (value) draft.githubCard=value; else delete draft.githubCard;
+    markDraft(); mode='preview'; renderDraft(); $('modal').close();
+    $('article-preview').querySelector('[data-hdev-github-card]')?.scrollIntoView({block:'center'});
+    toast(value?'목차 아래에 GitHub 정보 카드를 넣었어요.':'GitHub 정보 카드를 뺐어요.');
+  };
+  form.oninput=preview;
+  form.onsubmit=event=>{
+    event.preventDefault();
+    try {apply(readCard());}
+    catch(error){const message=form.querySelector('#github-card-error');message.textContent=error.message;message.hidden=false;}
+  };
+  form.querySelector('#github-remove').onclick=()=>apply(null);
+  form.querySelector('#github-cancel').onclick=()=>$('modal').close();
+  form.querySelector('#github-copy').onclick=async()=>{
+    try {await navigator.clipboard.writeText(renderGitHubCard(readCard()));toast('카드 HTML을 복사했어요.');}
+    catch(error){toast(error.message || 'HTML을 복사하지 못했습니다.',true);}
+  };
+  modal('GitHub 정보 카드',form); preview();
+  form.querySelector(draft.githubCard?'#github-topic':'#github-url').focus();
+};
+function closeBlockInsertMenus() {
+  $('block-editor').querySelectorAll('.block-insert-options').forEach(el=>{el.hidden=true;});
+  $('block-editor').querySelectorAll('.block-insert-toggle').forEach(el=>el.setAttribute('aria-expanded','false'));
+}
+function clearBlockDrag() {
+  blockDrag=null;
+  $('block-editor').classList.remove('is-dragging');
+  $('block-editor').querySelectorAll('.dragging,.drop-target').forEach(el=>el.classList.remove('dragging','drop-target'));
+}
+function canDropBlock(event) {
+  return !busy() && !switching && blockDrag?.draft===draft && draft.blocks.includes(blockDrag.block) && event.dataTransfer?.types.includes('text/hdev-block');
+}
+function showBlockDrop(event, position) {
+  if (!canDropBlock(event)) return;
+  event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect='move';
+  $('block-editor').querySelectorAll('.block-insert').forEach(el=>el.classList.toggle('drop-target',Number(el.dataset.position)===position));
+}
+function finishBlockEdit(index, editing=false) {
+  markDraft(); renderEditor(); renderCover();
+  const block=$('block-editor').querySelectorAll('.edit-block')[index];
+  const focus=block?.querySelector(editing?'textarea,input':'.block-drag-handle') || $('block-editor').querySelector('.block-insert-toggle');
+  focus?.focus({preventScroll:true}); focus?.scrollIntoView({block:'nearest'});
+  if (editing) focus?.select?.();
+}
+function moveBlock(from,to) {
+  if (!draft || busy() || switching || !Number.isInteger(from) || !Number.isInteger(to) || from<0 || to<0 || from>=draft.blocks.length || to>=draft.blocks.length || from===to) return;
+  const [block]=draft.blocks.splice(from,1); draft.blocks.splice(to,0,block);
+  finishBlockEdit(to);
+  $('editor-status').textContent=`${blockLabels[block.type]}을 ${to+1}번째로 옮겼어요.`;
+}
+function dropBlock(event,position) {
+  if (!canDropBlock(event)) return;
+  event.preventDefault(); event.stopPropagation();
+  const from=draft.blocks.indexOf(blockDrag.block);
+  clearBlockDrag();
+  // A gap is an insertion boundary before removing the source block.
+  moveBlock(from,position>from?position-1:position);
+}
+function insertBlock(type,position) {
+  if (!draft || busy() || switching || !Object.hasOwn(blockLabels,type)) return;
+  const targetDraft=draft, before=draft.blocks[position];
+  const insert=block=>{
+    if (draft!==targetDraft || busy() || switching) return;
+    const index=before?draft.blocks.indexOf(before):draft.blocks.length;
+    if (index<0) return;
+    draft.blocks.splice(index,0,block);
+    if ($('modal').open) $('modal').close();
+    finishBlockEdit(index,true);
+    $('editor-status').textContent=`${blockLabels[type]}을 ${index+1}번째에 추가했어요.`;
+  };
+  closeBlockInsertMenus();
+  if (type==='image') {
+    const box=document.createElement('div'); box.className='photo-picker';
+    if (!current?.draftImages.length) box.textContent='초안에 사용할 사진을 먼저 추가해 주세요.';
+    for (const [index,image] of (current?.draftImages || []).entries()) {
+      const button=document.createElement('button'); button.type='button'; button.setAttribute('aria-label',`${index+1}번 사진 추가`);
+      button.innerHTML=`<img src="${escape(image.url)}" alt="${escape(image.name)}"><span>사진 ${index+1} 추가</span>`;
+      button.onclick=()=>insert({type:'image',file:image.name,alt:'개발 캡처',caption:''}); box.append(button);
+    }
+    modal('본문에 넣을 사진',box); return;
+  }
+  insert(type==='list'?{type,items:['새 항목']}:type==='table'?{type,headers:['항목','내용'],rows:[['새 항목','내용을 입력하세요.']]}:{type,text:type==='heading'?'새 소제목':type==='code'?'// 코드를 입력하세요.':'새 내용을 입력하세요.'});
+}
+function blockInsertGap(position) {
+  const gap=document.createElement('div'); gap.className='block-insert'; gap.dataset.position=position;
+  const label=position===0?'맨 앞에 내용 추가':position===draft.blocks.length?'맨 뒤에 내용 추가':`${position}번째 항목 뒤에 내용 추가`;
+  gap.innerHTML=`<button type="button" class="block-insert-toggle" aria-label="${label}" aria-expanded="false" aria-controls="block-insert-${position}"><span aria-hidden="true">＋</span> 여기에 추가</button><div id="block-insert-${position}" class="block-insert-options" role="group" aria-label="추가할 내용" hidden></div>`;
+  const toggle=gap.querySelector('button'), options=gap.querySelector('.block-insert-options');
+  toggle.onclick=()=>{if(busy())return;const open=options.hidden;closeBlockInsertMenus();options.hidden=!open;toggle.setAttribute('aria-expanded',String(open));};
+  for (const [type,name] of Object.entries(blockLabels)) {
+    const button=document.createElement('button'); button.type='button'; button.dataset.blockType=type; button.textContent=name;
+    button.onclick=()=>insertBlock(type,position); options.append(button);
+  }
+  gap.onkeydown=event=>{if(event.key==='Escape'){closeBlockInsertMenus();toggle.focus();event.stopPropagation();}};
+  gap.ondragover=event=>showBlockDrop(event,position);
+  gap.ondrop=event=>dropBlock(event,position);
+  return gap;
+}
+document.addEventListener('click',event=>{if(!event.target.closest('.block-insert'))closeBlockInsertMenus();});
+$('block-editor').ondragleave=event=>{
+  if (!$('block-editor').contains(event.relatedTarget)) $('block-editor').querySelectorAll('.drop-target').forEach(el=>el.classList.remove('drop-target'));
+};
 function renderEditor() {
   if (!draft) return;
+  clearBlockDrag();
   $('draft-title').value=draft.title; $('draft-tags').value=draft.tags.join(', ');
   const editor=$('block-editor'); editor.replaceChildren();
-  const labels={paragraph:'문단',heading:'소제목',code:'코드',list:'목록',image:'사진',table:'비교 표'};
   draft.blocks.forEach((b,index)=>{
     const el=document.createElement('div'); el.className='edit-block'; el.dataset.type=b.type;
-    el.innerHTML=`<div class="edit-block-header"><span>${labels[b.type]}</span><span><button aria-label="블록 ${index+1} 위로 이동" ${index===0?'disabled':''}>↑</button><button aria-label="블록 ${index+1} 아래로 이동" ${index===draft.blocks.length-1?'disabled':''}>↓</button><button aria-label="블록 ${index+1} 삭제">×</button></span></div>`;
-    const [up,down,remove]=el.querySelectorAll('button');
-    const move=to=>{ if(busy()||to<0||to>=draft.blocks.length)return; const [item]=draft.blocks.splice(index,1); draft.blocks.splice(to,0,item); markDraft(); renderEditor(); };
-    up.onclick=()=>move(index-1); down.onclick=()=>move(index+1); remove.onclick=()=>{ if(busy())return; draft.blocks.splice(index,1); markDraft(); renderEditor(); };
+    el.innerHTML=`<div class="edit-block-header"><span class="edit-block-label"><button type="button" class="block-drag-handle" draggable="true" aria-label="${index+1}번 ${blockLabels[b.type]} 끌어서 이동" title="끌어서 이동 · 위아래 방향키로도 이동할 수 있어요"><svg viewBox="0 0 12 18" width="12" height="18" fill="currentColor" aria-hidden="true"><circle cx="3" cy="3" r="1.5"/><circle cx="9" cy="3" r="1.5"/><circle cx="3" cy="9" r="1.5"/><circle cx="9" cy="9" r="1.5"/><circle cx="3" cy="15" r="1.5"/><circle cx="9" cy="15" r="1.5"/></svg></button>${blockLabels[b.type]}</span><span class="edit-block-actions"><button type="button" class="block-up" aria-label="블록 ${index+1} 위로 이동">↑</button><button type="button" class="block-down" aria-label="블록 ${index+1} 아래로 이동">↓</button><button type="button" class="block-remove" aria-label="블록 ${index+1} 삭제">×</button></span></div>`;
+    const handle=el.querySelector('.block-drag-handle');
+    handle.ondragstart=event=>{
+      if (busy() || switching) {event.preventDefault();return;}
+      closeBlockInsertMenus(); blockDrag={draft,block:b};
+      event.dataTransfer.setData('text/hdev-block',String(index)); event.dataTransfer.effectAllowed='move'; event.dataTransfer.setDragImage(el,24,16);
+      el.classList.add('dragging'); editor.classList.add('is-dragging');
+    };
+    handle.ondragend=clearBlockDrag;
+    handle.onkeydown=event=>{if(event.key==='ArrowUp'||event.key==='ArrowDown'){event.preventDefault();moveBlock(index,index+(event.key==='ArrowUp'?-1:1));}};
+    const dropPosition=event=>index+(event.clientY>el.getBoundingClientRect().top+el.getBoundingClientRect().height/2?1:0);
+    el.ondragover=event=>showBlockDrop(event,dropPosition(event));
+    el.ondrop=event=>dropBlock(event,dropPosition(event));
+    el.querySelector('.block-up').onclick=()=>moveBlock(index,index-1);
+    el.querySelector('.block-down').onclick=()=>moveBlock(index,index+1);
+    el.querySelector('.block-remove').onclick=()=>{if(busy())return;draft.blocks.splice(index,1);finishBlockEdit(Math.min(index,draft.blocks.length-1));};
     if(b.type==='image'){
-      const img=document.createElement('img'); img.src=imageURL(b.file); img.alt=b.alt; el.append(img);
+      const img=document.createElement('img'); img.src=imageURL(b.file); img.alt=b.alt; img.draggable=false; el.append(img);
       for(const [field,label] of [['caption','사진 설명'],['alt','사진 대체 텍스트']]){
         const input=document.createElement('input'); input.className='image-caption'; input.value=b[field]||''; input.placeholder=label; input.setAttribute('aria-label',`${index+1}번 ${label}`); input.oninput=()=>{b[field]=input.value;markDraft();}; el.append(input);
       }
     }else{
-      const textarea=document.createElement('textarea'); textarea.setAttribute('aria-label',`${index+1}번 ${labels[b.type]}`);
+      const textarea=document.createElement('textarea'); textarea.setAttribute('aria-label',`${index+1}번 ${blockLabels[b.type]}`);
       textarea.value=b.type==='list'?b.items.join('\n'):b.type==='table'?[b.headers,...b.rows].map(row=>row.join('\t')).join('\n'):b.text;
       textarea.rows=b.type==='heading'?2:Math.max(3,Math.min(12,textarea.value.split('\n').length+1));
       if(b.type==='table')textarea.title='탭으로 열을 구분하고 줄바꿈으로 행을 구분합니다.';
       textarea.oninput=()=>{ if(b.type==='list')b.items=textarea.value.split('\n'); else if(b.type==='table'){const rows=textarea.value.split('\n').map(row=>row.split('\t'));b.headers=rows.shift();b.rows=rows;}else b.text=textarea.value;markDraft();}; el.append(textarea);
     }
-    editor.append(el);
+    editor.append(blockInsertGap(index),el);
   });
+  editor.append(blockInsertGap(draft.blocks.length));
+  updateControls();
 }
 function renderDraft() {
   $('empty-draft').hidden=!!draft; $('article-preview').hidden=!draft||mode!=='preview'; $('article-editor').hidden=!draft||mode!=='edit';
@@ -414,14 +644,7 @@ $('edit-view').onclick=()=>{mode='edit';renderDraft();}; $('preview-view').oncli
 $('manual-start').onclick=async()=>{
   try{await saveMaterial();draft={title:$('topic').value||'새로운 개발 기록',tags:[],blocks:[{type:'paragraph',text:'이곳에 개발 기록을 적어주세요.'},...current.images.map(i=>({type:'image',file:i.name,alt:i.label,caption:''}))]};draftDirty=true;await saveAll();mode='edit';renderDraft();}catch(e){toast(e.message,true);}
 };
-$('add-block').onclick=()=>{
-  if(!draft||busy())return;const type=$('block-type').value;
-  if(type==='image'){
-    const box=document.createElement('div');box.className='photo-picker';
-    for(const i of current.draftImages){const b=document.createElement('button');b.innerHTML=`<img src="${escape(i.url)}" alt="${escape(i.name)}"><span>사진 추가</span>`;b.onclick=()=>{draft.blocks.push({type:'image',file:i.name,alt:'개발 캡처',caption:''});markDraft();renderEditor();$('modal').close();};box.append(b);}modal('본문에 넣을 사진',box);return;
-  }
-  draft.blocks.push(type==='list'?{type,items:['새 항목']}:{type,text:type==='heading'?'새 소제목':'새 내용을 입력하세요.'});markDraft();renderEditor();
-};
+$('add-block').onclick=()=>{if(draft)insertBlock($('block-type').value,draft.blocks.length);};
 $('generate').onclick=async()=>{
   if(busy())return;
   try{await saveAll();current=await api(`/api/jobs/${current.id}/generate`,{method:'POST'});updateControls();pollGeneration(current.id);}catch(e){toast(e.message,true);}
@@ -432,6 +655,7 @@ function pollGeneration(id){
     try{
       const next=await api(`/api/jobs/${id}`);if(current?.id!==id)return;current=next;updateControls();
       if(next.generation.phase==='generating'){pollGeneration(id);return;}
+      renderReferences();
       if(next.generation.phase==='done'){draft=structuredClone(next.draft);draftDirty=false;mode='preview';$('review-notes').value=next.review;$('analysis-text').textContent=next.analysis;renderDraft();saveStatus('초안 보관됨');toast('초안을 만들었어요. 사진과 내용을 함께 확인해 보세요.');}
       else toast(next.generation.message||'글 작성이 중단됐습니다.',true);
       await refreshJobs();
@@ -466,7 +690,7 @@ async function boot(){
     settings=await api('/api/bootstrap');token=settings.token;
     if(settings.blogUrl)$('blog-link').href=settings.blogUrl;
     await refreshJobs();const last=localStorage.getItem('hdev.current');
-    if(last&&jobs.some(j=>j.id===last))await selectJob(last);else{renderPhotos();renderDraft();updateControls();}
+    if(last&&jobs.some(j=>j.id===last))await selectJob(last);else{renderPhotos();renderReferences();renderDraft();updateControls();}
   }catch(e){saveStatus('앱 연결 실패');toast('앱에 연결하지 못했어요. 실행 상태를 확인하고 새로고침해 주세요.',true);}
 }
 boot();
