@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { articleBlocks, manifestImage } from '../web/draft-model.js';
+import { articleBlocks, manifestImage, normalizeCategory } from '../web/draft-model.js';
 import { articleAttributes, articleCss, renderArticleContent } from '../web/article-renderer.js';
 import { readReferences } from './references.mjs';
 
@@ -156,6 +156,7 @@ function requiredText(value, label) {
 }
 
 export function buildPreview(draft, manifest, { includeToc = true } = {}) {
+  if (draft.category != null) normalizeCategory(draft.category);
   const title = requiredText(draft.title, 'title');
   check(Array.isArray(draft.blocks) && draft.blocks.length, 'blocks가 비어 있습니다.');
   check(Array.isArray(draft.tags) && draft.tags.every(t => typeof t === 'string'), 'tags는 문자열 배열이어야 합니다.');

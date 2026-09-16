@@ -27,11 +27,11 @@ let references = [];
 let referenceTimer, referenceStarting = false;
 let draftDirty = false, materialDirty = false, materialVersion = 0, saveTimer, pollTimer, toastTimer;
 let saveQueue = Promise.resolve(), uploadBusy = false, switching = false, publishStarting = false, publishTimer;
-let deleting = false, draftSave = Promise.resolve();
+let deleting = false, draftSave = Promise.resolve(), categoryLoading = false, categoryPollTimer;
 let blockDrag = null;
 const blockLabels = {paragraph:'문단',heading:'소제목',code:'코드',list:'목록',image:'사진',table:'비교 표'};
 const isPublishing = p => ['preparing','waiting_login','uploading','filling','submitting','verifying'].includes(p?.phase);
-const busy = (allowPublicationSave = false) => referenceStarting || current?.referenceRead?.phase === 'reading' || deleting || uploadBusy || (!allowPublicationSave && publishStarting) || current?.generation.phase === 'generating' || isPublishing(current?.publication);
+const busy = (allowPublicationSave = false) => categoryLoading || settings?.categories?.busy || referenceStarting || current?.referenceRead?.phase === 'reading' || deleting || uploadBusy || (!allowPublicationSave && publishStarting) || current?.generation.phase === 'generating' || isPublishing(current?.publication);
 
 async function api(url, options = {}) {
   const response = await fetch(url, { ...options, headers: { 'X-App-Token': token || '', ...(options.json !== undefined ? { 'Content-Type': 'application/json' } : {}), ...options.headers }, body: options.json !== undefined ? JSON.stringify(options.json) : options.body });
@@ -57,6 +57,49 @@ $('modal').addEventListener('click', e => { if (!deleting && e.target === $('mod
 function saveStatus(text) { $('save-state').textContent = text; }
 function markMaterial() { materialDirty = true; materialVersion++; saveStatus('변경사항 보관 중…'); clearTimeout(saveTimer); saveTimer = setTimeout(() => saveMaterial().catch(e => { saveStatus('보관 실패'); toast(e.message,true); }), 800); }
 function markDraft() { draftDirty = true; saveStatus('수정한 글 · 보관 필요'); updateFooter(); }
+
+function renderCategories() {
+  const state = settings?.categories, select = $('draft-category');
+  $('category-section').hidden = !draft;
+  select.replaceChildren(new Option('티스토리 기본값', ''));
+  for (const item of state?.items || []) select.add(new Option(item.path.join(' / '), item.id));
+  if (draft?.category) {
+    const found = state?.items?.find(item => JSON.stringify(item) === JSON.stringify(draft.category));
+    if (!found) select.add(new Option(`저장된 선택: ${draft.category.path.join(' / ')}`, 'saved'));
+    select.value = found ? found.id : 'saved';
+  }
+  $('category-status').classList.remove('error');
+  $('category-status').textContent = state?.busy || categoryLoading ? '티스토리 창에서 목록을 읽고 있어요. 로그인 화면이 나오면 로그인해 주세요.'
+    : !state?.canRead ? '카테고리 목록을 새로 불러오려면 데스크톱 앱을 사용하세요.'
+    : select.value === 'saved' ? '저장된 선택을 확인하려면 목록을 불러와 다시 선택해 주세요.'
+    : state?.updatedAt ? '선택한 카테고리는 초안과 함께 보관되며 발행할 때 적용돼요.'
+    : '카테고리를 불러오면 하위 카테고리까지 선택할 수 있어요.';
+}
+$('draft-category').onchange = () => {
+  if (!draft || busy() || $('draft-category').value === 'saved') return;
+  const category = settings?.categories?.items.find(item => item.id === $('draft-category').value);
+  if (category) draft.category = structuredClone(category); else delete draft.category;
+  markDraft(); renderCategories(); updateControls();
+};
+async function pollCategories() {
+  clearTimeout(categoryPollTimer);
+  try { settings.categories = await api('/api/categories'); renderCategories(); updateControls(); }
+  catch (error) { toast(error.message, true); }
+  if (settings?.categories?.busy) categoryPollTimer = setTimeout(pollCategories, 1500);
+}
+$('category-refresh').onclick = async () => {
+  if (busy() || switching) return;
+  try {
+    await saveAll(); categoryLoading = true; renderCategories(); updateControls();
+    settings.categories = await api('/api/categories', { method: 'POST' });
+    categoryLoading = false; renderCategories();
+    toast('티스토리 카테고리를 불러왔어요.');
+  } catch (error) {
+    categoryLoading = false;
+    $('category-status').classList.add('error'); $('category-status').textContent = error.message;
+    toast(error.message, true);
+  } finally { categoryLoading = false; updateControls(); }
+};
 
 async function ensureJob() {
   if (!current) {
@@ -349,6 +392,9 @@ async function uploadFiles(files) {
 
 function updateControls() {
   const running = busy(), hasImages = !!current?.images.length;
+  $('draft-category').disabled = running || !draft;
+  $('category-refresh').disabled = running || !settings?.categories?.canRead;
+  $('category-refresh').textContent = categoryLoading || settings?.categories?.busy ? '불러오는 중…' : settings?.categories?.updatedAt ? '목록 새로고침' : '카테고리 불러오기';
   const reading = referenceStarting || current?.referenceRead?.phase === 'reading';
   $('reference-read').disabled = running || !references.length;
   $('reference-read').textContent = reading ? '읽는 중…' : '자료 읽기';
@@ -635,7 +681,7 @@ function renderDraft() {
   $('empty-draft').hidden=!!draft; $('article-preview').hidden=!draft||mode!=='preview'; $('article-editor').hidden=!draft||mode!=='edit';
   $('preview-view').classList.toggle('active',mode==='preview'); $('edit-view').classList.toggle('active',mode==='edit');
   $('preview-view').setAttribute('aria-pressed',mode==='preview'); $('edit-view').setAttribute('aria-pressed',mode==='edit');
-  renderCover(); if(draft){renderPreview();renderEditor();} updateFooter(); updateControls();
+  renderCover(); renderCategories(); if(draft){renderPreview();renderEditor();} updateFooter(); updateControls();
 }
 $('draft-title').oninput=()=>{draft.title=$('draft-title').value;markDraft();};
 $('draft-tags').oninput=()=>{draft.tags=$('draft-tags').value.split(',').map(t=>t.trim().replace(/^#/, '')).filter(Boolean);markDraft();};
@@ -688,6 +734,7 @@ window.addEventListener('beforeunload',e=>{if(draftDirty||materialDirty||styleSe
 async function boot(){
   try{
     settings=await api('/api/bootstrap');token=settings.token;
+    if (settings.categories?.busy) categoryPollTimer = setTimeout(pollCategories, 1500);
     if(settings.blogUrl)$('blog-link').href=settings.blogUrl;
     await refreshJobs();const last=localStorage.getItem('hdev.current');
     if(last&&jobs.some(j=>j.id===last))await selectJob(last);else{renderPhotos();renderReferences();renderDraft();updateControls();}

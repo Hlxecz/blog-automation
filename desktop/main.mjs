@@ -94,7 +94,11 @@ else {
           url: result.url, imageCount: Object.keys(result.uploaded).length, verifiedAt: new Date().toISOString(), submitted: false }, null, 2));
       } : null })(request);
     };
-    server = createApp({ root: dataRoot, webRoot: path.join(bundle, 'web'), publishAdapter });
+    const categoryReader = async request => {
+      const { createTistoryCategoryReader } = await import(`./publish.mjs?categories=${randomUUID()}`);
+      return createTistoryCategoryReader({ openWindow: openTistory })(request);
+    };
+    server = createApp({ root: dataRoot, webRoot: path.join(bundle, 'web'), publishAdapter, categoryReader });
     await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
     origin = `http://127.0.0.1:${server.address().port}`;
     mainWindow = new BrowserWindow({ width: 1440, height: 980, minWidth: 880, minHeight: 680, show: false,
@@ -103,7 +107,7 @@ else {
     protectNavigation(mainWindow, true);
     mainWindow.on('close', event => {
       if (server.hasActiveGeneration()) {
-        event.preventDefault(); dialog.showMessageBox(mainWindow, { type: 'info', message: '자료 읽기, 글 작성, 말투 분석 또는 발행이 진행 중입니다.', detail: '작업이 끝나면 앱을 닫을 수 있어요. 티스토리 로그인 화면이 열렸다면 먼저 로그인을 완료해 주세요.' });
+        event.preventDefault(); dialog.showMessageBox(mainWindow, { type: 'info', message: '카테고리·자료 읽기, 글 작성, 말투 분석 또는 발행이 진행 중입니다.', detail: '작업이 끝나면 앱을 닫을 수 있어요. 티스토리 로그인 화면이 열렸다면 먼저 로그인을 완료해 주세요.' });
       }
     });
     mainWindow.on('closed', () => { mainWindow = null; });

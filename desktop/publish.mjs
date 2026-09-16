@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { publicationHtml, verifyPublishedHtml } from '../scripts/publication.mjs';
 import { parseFeed } from '../scripts/tistory.mjs';
-import { articleBlocks } from '../web/draft-model.js';
+import { articleBlocks, categoriesFromEditor, normalizeCategory } from '../web/draft-model.js';
 
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const error = message => { throw new Error(message); };
@@ -47,6 +47,28 @@ function editorCommand(command, data) {
     src: img.getAttribute('src'), ready: img.complete && img.naturalWidth > 0
   }));
   if (command === 'empty') return !title.value.trim() && !editor.getBody().textContent.trim() && !images().length;
+  // Observed in the signed-in editor on 2026-09-16. aria-selected tracks menu
+  // keyboard focus, not the saved category; check the button after clicking an ID.
+  if (command.startsWith('categor')) {
+    const button = document.getElementById('category-btn');
+    if (!button || button.getAttribute('aria-controls') !== 'category-list') throw new Error('티스토리 카테고리 선택 화면이 달라졌습니다.');
+    if (command === 'categoriesOpen') {
+      if (!visible(button)) return false;
+      if (button.getAttribute('aria-expanded') !== 'true') button.click();
+      return true;
+    }
+    if (command === 'categories') {
+      const list = document.getElementById('category-list');
+      return visible(list) ? [...list.querySelectorAll('[role="option"]')].map(el => ({ id: el.getAttribute('category-id'), label: el.getAttribute('aria-label') })) : null;
+    }
+    if (command === 'categorySelect') {
+      const option = document.getElementById(`category-item-${data.id}`);
+      if (!visible(option) || option.getAttribute('category-id') !== data.id || option.getAttribute('aria-label') !== data.label) throw new Error('선택한 카테고리를 찾지 못했습니다. 목록을 다시 불러와 주세요.');
+      option.click(); return true;
+    }
+    if (command === 'categorySelected') return button.getAttribute('aria-expanded') === 'false' && button.querySelector('.mce-txt')?.textContent.trim() === data.name;
+    throw new Error('지원하지 않는 카테고리 동작입니다.');
+  }
   if (command === 'images') return images();
   if (command === 'imageMarkup') {
     // Tistory's getContent hook serializes images into its own shortcode format.
@@ -112,13 +134,11 @@ function editorCommand(command, data) {
   throw new Error('지원하지 않는 편집 동작입니다.');
 }
 
-export function createTistoryPublisher({ openWindow, fetchPublic = fetch, onDryRun = null }) {
-  return async ({ blogUrl, draft, manifest, directory, onProgress, beforeSubmit, includeToc = true }) => {
+function editorSession(openWindow, blogUrl, onProgress = () => {}) {
     const blog = new URL(blogUrl);
     if (blog.protocol !== 'https:' || !/^[a-z0-9-]+\.tistory\.com$/.test(blog.hostname) || blog.username || blog.password || blog.port)
       error('발행할 티스토리 블로그 주소가 올바르지 않습니다.');
     const win = openWindow(`${blog.origin}/manage`), wc = win.webContents;
-    let submitted = false;
     const evalEditor = async (command, data = {}) => {
       if (win.isDestroyed()) error('티스토리 창이 닫혔습니다.');
       if (new URL(wc.getURL() || 'about:blank').origin !== blog.origin) error('로그인이 필요하거나 다른 블로그로 이동했습니다.');
@@ -135,7 +155,7 @@ export function createTistoryPublisher({ openWindow, fetchPublic = fetch, onDryR
       }
       error(message);
     };
-    try {
+    const open = async () => {
       onProgress('waiting_login', '티스토리 로그인을 확인하고 있어요. 로그인 화면이 나오면 이 창에서 완료해 주세요.');
       const writeLink = await until(async () => {
         if (!wc.getURL().startsWith(`${blog.origin}/manage`) || wc.isLoadingMainFrame()) return null;
@@ -144,7 +164,46 @@ export function createTistoryPublisher({ openWindow, fetchPublic = fetch, onDryR
       if (new URL(writeLink).origin !== blog.origin || !new URL(writeLink).pathname.startsWith('/manage/')) error('글쓰기 주소가 대상 블로그와 다릅니다.');
       await wc.loadURL(writeLink);
       await until(() => evalEditor('ready'), '티스토리 기본 편집기가 열리지 않았습니다. 복구 안내가 있다면 먼저 처리해 주세요.');
+    };
+    return { blog, win, wc, evalEditor, until, open };
+}
+
+async function readCategories({ blog, evalEditor, until }) {
+  await until(() => evalEditor('categoriesOpen'), '카테고리 선택 메뉴를 열지 못했습니다.');
+  const options = await until(() => evalEditor('categories'), '카테고리 목록을 읽지 못했습니다.');
+  return categoriesFromEditor(options, blog.origin);
+}
+
+export function createTistoryCategoryReader({ openWindow }) {
+  return async ({ blogUrl }) => {
+    const session = editorSession(openWindow, blogUrl);
+    await session.open();
+    const categories = await readCategories(session);
+    // Never close a recovered draft or content typed by the user in this window.
+    if (await session.evalEditor('empty')) session.win.close();
+    return categories;
+  };
+}
+
+async function selectCategory(session, value) {
+  if (!value) return;
+  const category = normalizeCategory(value, session.blog.origin), categories = await readCategories(session);
+  const item = categories.find(item => item.id === category.id && JSON.stringify(item.path) === JSON.stringify(category.path));
+  if (!item) error('선택한 카테고리가 삭제되거나 이름이 바뀌었습니다. 목록을 불러와 다시 선택해 주세요.');
+  await session.evalEditor('categorySelect', { id: item.id, label: (item.path.length === 2 ? '- ' : '') + item.path.at(-1) });
+  await session.until(() => session.evalEditor('categorySelected', { name: item.id === '0' ? '카테고리' : item.path.at(-1) }), '카테고리가 적용되지 않았습니다. 발행하지 않았습니다.');
+}
+
+export function createTistoryPublisher({ openWindow, fetchPublic = fetch, onDryRun = null }) {
+  return async ({ blogUrl, draft, manifest, directory, onProgress, beforeSubmit, includeToc = true }) => {
+    if (draft.category) normalizeCategory(draft.category, blogUrl);
+    const session = editorSession(openWindow, blogUrl, onProgress);
+    const { blog, win, wc, evalEditor, until } = session;
+    let submitted = false;
+    try {
+      await session.open();
       if (!await evalEditor('empty')) error('티스토리에 작성 중이던 내용이 있습니다. 해당 내용을 보관하고 빈 글쓰기 화면으로 돌아온 뒤 다시 시도해 주세요.');
+      await selectCategory(session, draft.category);
 
       const uploaded = {};
       // Tistory's documented default representative image is the first image.
@@ -192,6 +251,7 @@ export function createTistoryPublisher({ openWindow, fetchPublic = fetch, onDryR
         await until(() => evalEditor('tagSaved', { tag }), `태그 “${tag}”를 확인하지 못했습니다.`, 5000);
       }
       await until(() => evalEditor('verify', { title: draft.title, html }), '편집기 내용이 검토한 초안과 다릅니다. 발행하지 않았습니다.');
+      await selectCategory(session, draft.category);
       await until(() => evalEditor('click', { id: 'publish-layer-btn', text: '완료' }), '발행 설정 버튼을 찾지 못했습니다.');
       await until(() => evalEditor('panel'), '티스토리 발행 설정이 열리지 않았습니다.');
       await evalEditor('click', { id: 'open20' });
@@ -202,6 +262,7 @@ export function createTistoryPublisher({ openWindow, fetchPublic = fetch, onDryR
       if (!panel.url || new URL(panel.url).origin !== blog.origin || !/^\/(\d+|entry\/[^/]+)\/?$/.test(new URL(panel.url).pathname))
         error('발행될 글 주소를 확인하지 못했습니다.');
       if (!await evalEditor('verify', { title: draft.title, html })) error('발행 직전 내용이 변경됐습니다. 다시 확인해 주세요.');
+      if (draft.category && !await evalEditor('categorySelected', { name: draft.category.id === '0' ? '카테고리' : draft.category.path.at(-1) })) error('발행 직전 카테고리가 변경됐습니다. 다시 확인해 주세요.');
       // The development harness can inspect the real editor without creating a test post.
       if (onDryRun) { await onDryRun({ win, url: panel.url, draft, html, uploaded }); error('검증 모드: 사진과 본문 입력까지 확인했습니다. 공개 발행은 실행하지 않았습니다.'); }
       beforeSubmit(); submitted = true;
@@ -213,7 +274,7 @@ export function createTistoryPublisher({ openWindow, fetchPublic = fetch, onDryR
       }
       onProgress('verifying', '공개된 글의 제목·본문·사진을 확인하고 있어요.');
       const url = await waitForPublishedPost({ blogUrl, draft, uploaded, candidateUrl: panel.url, fetchPublic });
-      return { url, title: draft.title, verifiedAt: new Date().toISOString(), evidence: { public: true, body: true, images: true, ...(draft.cover ? {cover:true} : {}) } };
+      return { url, title: draft.title, verifiedAt: new Date().toISOString(), evidence: { public: true, body: true, images: true, ...(draft.cover ? {cover:true} : {}), ...(draft.category ? {category:true} : {}) } };
     } catch (err) {
       if (!submitted && !win.isDestroyed()) win.setTitle(`발행 중단 · ${err.message}`);
       throw err;
