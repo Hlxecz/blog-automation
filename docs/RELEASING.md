@@ -38,6 +38,7 @@
    npm run release:check
    npm test
    npm run test:desktop
+   npm run test:categories
    npm run build:exe
    ```
 
@@ -83,7 +84,7 @@ git push origin main
 
 ## GitHub 검사와 배포
 
-- **Windows checks:** `main`에 push하거나 PR을 만들면 설정 초기화, 버전 검사, Node 테스트와 Electron 편집기 검증을 실행합니다.
+- **Windows checks:** `main`에 push하거나 PR을 만들면 설정 초기화, 버전 검사, Node 테스트와 Electron 편집기·카테고리 화면 검증을 실행합니다. 카테고리 검증은 모의 목록과 임시 자료 폴더에서 선택 보관·재생성 시 유지·목록 읽기 실패 복구·모바일 배치를 확인합니다.
 - **Build Windows EXE:** Actions 화면에서 수동으로 실행합니다. 같은 검사를 거쳐 EXE와 확인 파일을 다운로드 가능한 산출물로 보관합니다. 산출물은 14일 후 만료됩니다.
 - 두 작업은 저장소 읽기 권한을 사용합니다. GitHub Release나 태그를 자동 생성하지 않습니다. 실행 결과는 저장소의 Actions 화면에서 확인합니다.
 
