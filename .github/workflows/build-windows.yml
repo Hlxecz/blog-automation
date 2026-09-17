@@ -23,6 +23,7 @@ jobs:
       - run: npm run release:check
       - run: npm test
       - run: npm run test:desktop
+      - run: npm run test:categories
       - run: npm run build:exe
       - uses: actions/upload-artifact@v7
         with:
