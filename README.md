@@ -24,9 +24,11 @@
 
 ## Windows 앱 다운로드
 
-[H.Dev Studio 0.7.2 다운로드](https://github.com/Hlxecz/blog-automation/releases/tag/v0.7.2)에서 `HDev-Studio-0.7.2-win-x64.exe`를 받아 실행하세요. 설치가 필요 없는 Windows 64비트 앱입니다.
+[H.Dev Studio 0.7.3 다운로드](https://github.com/Hlxecz/blog-automation/releases/tag/v0.7.3)에서 `HDev-Studio-0.7.3-win-x64.exe`를 받아 실행하세요. 설치가 필요 없는 Windows 64비트 앱입니다.
 
 처음 실행하면 **티스토리 로그인**을 누릅니다. 로그인한 계정의 블로그를 자동으로 찾아 글과 카테고리를 불러옵니다. 블로그가 여러 개면 사용할 블로그를 선택하세요. **도움말 · AI 연결**에서 Codex 또는 Claude Code를 선택하고 본인 계정으로 로그인하세요. [자세한 사용 안내](docs/USAGE.md)를 참고하세요.
+
+연결 후 로그인 버튼에는 **블로그 이름 ▾**이 표시됩니다. 이름을 눌러 블로그를 선택하거나 로그인 상태를 다시 확인할 수 있습니다.
 
 ## 주요 기능
 
