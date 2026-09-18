@@ -7,7 +7,7 @@ export function blogConfigured(value) {
 }
 
 export function requireBlog(value) {
-  if (!blogConfigured(value)) throw Object.assign(new Error('먼저 내 블로그 설정에서 본인의 티스토리 주소를 저장해 주세요.'), { status: 409 });
+  if (!blogConfigured(value)) throw Object.assign(new Error('먼저 티스토리에 로그인해 본인의 블로그를 연결해 주세요.'), { status: 409 });
   return blogAddress(value).url;
 }
 

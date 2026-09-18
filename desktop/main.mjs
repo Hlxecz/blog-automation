@@ -4,7 +4,7 @@ import path from 'node:path';
 import { createApp } from '../scripts/server.mjs';
 import { initializeData } from './data.mjs';
 import { randomUUID } from 'node:crypto';
-import { blogConfigured } from '../scripts/blog-settings.mjs';
+import { createTistoryAccountReader } from './account.mjs';
 
 app.setName('H.Dev Studio');
 // Keep development windows and sessions independent from the installed EXE.
@@ -12,10 +12,10 @@ if (!app.isPackaged) app.setPath('userData', path.join(app.getPath('appData'), '
 app.setAppUserModelId('com.hdev.studio');
 let mainWindow, server, origin, dataRoot;
 const remoteWindows = new Set();
-function openBlogSettings() {
+function openBlogSettings(eventName = 'hdev:blog-settings') {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.show(); mainWindow.focus();
-    mainWindow.webContents.executeJavaScript("window.dispatchEvent(new Event('hdev:blog-settings'))").catch(() => {});
+    mainWindow.webContents.executeJavaScript(`window.dispatchEvent(new Event(${JSON.stringify(eventName)}))`).catch(() => {});
   }
 }
 
@@ -111,7 +111,8 @@ else {
       const { createTistoryCategoryReader } = await import(`./publish.mjs?categories=${randomUUID()}`);
       return createTistoryCategoryReader({ openWindow: openTistory })(request);
     };
-    server = createApp({ root: dataRoot, webRoot: path.join(bundle, 'web'), publishAdapter, categoryReader });
+    server = createApp({ root: dataRoot, webRoot: path.join(bundle, 'web'), publishAdapter, categoryReader,
+      accountReader: createTistoryAccountReader({ openWindow: openTistory }) });
     await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
     origin = `http://127.0.0.1:${server.address().port}`;
     mainWindow = new BrowserWindow({ width: 1440, height: 980, minWidth: 880, minHeight: 680, show: false,
@@ -127,11 +128,8 @@ else {
     Menu.setApplicationMenu(Menu.buildFromTemplate([
       { label: '작업실', submenu: [
         { label: '자료 폴더 열기', click: openDataFolder },
-        { label: '내 블로그 설정', click: openBlogSettings },
-        { label: '티스토리 로그인 / 글 관리', click: () => {
-          const blogUrl = JSON.parse(fs.readFileSync(path.join(dataRoot, 'tistory.config.json'), 'utf8')).blogUrl;
-          if (blogConfigured(blogUrl)) openTistory(`${blogUrl}/manage`); else openBlogSettings();
-        } },
+        { label: '내 블로그 연결', click: () => openBlogSettings() },
+        { label: '티스토리 로그인', click: () => openBlogSettings('hdev:tistory-login') },
         { type: 'separator' }, { role: 'close', label: '창 닫기' }
       ] },
       { label: '편집', submenu: [{ role: 'undo', label: '실행 취소' }, { role: 'redo', label: '다시 실행' }, { type: 'separator' }, { role: 'cut', label: '잘라내기' }, { role: 'copy', label: '복사' }, { role: 'paste', label: '붙여넣기' }, { role: 'selectAll', label: '전체 선택' }] },

@@ -29,3 +29,4 @@ jobs:
       - run: npm run test:categories
       - run: npm run test:writing
       - run: npm run test:setup
+      - run: npm run test:account

@@ -21,7 +21,7 @@
       <button id="archive-nav" class="nav-item" aria-label="보관한 글" title="보관한 글"><span data-icon="archive"></span><span class="nav-label">보관한 글</span><span id="archive-count" class="nav-count">0</span></button>
       <button id="library-nav" class="nav-item" aria-label="티스토리 글" title="티스토리 글"><span data-icon="file"></span><span class="nav-label">티스토리 글</span></button>
       <button id="style-nav" class="nav-item" aria-label="내 말투" title="내 말투"><span data-icon="feather"></span><span class="nav-label">내 말투</span></button>
-      <button id="blog-settings-nav" class="nav-item" aria-label="내 블로그 설정" title="내 블로그 설정"><span data-icon="layout"></span><span class="nav-label">내 블로그 설정</span></button>
+      <button id="blog-settings-nav" class="nav-item" aria-label="내 블로그 연결" title="내 블로그 연결"><span data-icon="layout"></span><span class="nav-label">내 블로그 연결</span></button>
       <button id="help-nav" class="nav-item" aria-label="도움말 · AI 연결" title="도움말 · AI 연결"><span data-icon="help"></span><span class="nav-label">도움말 · AI 연결</span></button>
     </nav>
     <div class="recent-heading">최근 작업</div>
@@ -103,11 +103,11 @@
   </main>
 
   <section id="library-page" class="library-page" hidden aria-label="티스토리 기존 글 목록">
-    <header class="topbar"><div class="breadcrumb"><span>내 블로그</span><span>/</span><strong>티스토리 글</strong></div><a id="manage-blog" class="button primary" target="_blank" rel="noopener noreferrer">로그인 / 글 관리 ↗</a></header>
+    <header class="topbar"><div class="breadcrumb"><span>내 블로그</span><span>/</span><strong>티스토리 글</strong></div><div class="top-actions"><button id="manage-blog" class="button primary">티스토리 로그인</button><a id="open-blog-management" class="button secondary" target="_blank" rel="noopener noreferrer" hidden>글 관리 ↗</a></div></header>
     <div class="library-content">
       <div class="library-heading"><div><div class="workspace-kicker"><span class="small-dot"></span> 쌓아온 개발 기록</div><h1>내 블로그의 글들.</h1><p>기존 글을 찾아 읽고, 티스토리에서 이어서 수정하세요.</p></div><button id="sync-blog" class="button secondary">목록 새로고침 ↻</button></div>
-      <div class="blog-connect"><label for="blog-select">등록한 블로그</label><select id="blog-select"></select><button id="add-blog" class="text-button">＋ 블로그 추가</button><span id="library-updated" role="status"></span></div>
-      <div class="library-guide"><strong>글 수정과 발행은 티스토리 편집 화면에서</strong><p>먼저 <b>로그인 / 글 관리</b>를 열어 로그인하세요. 글 관리에서 원하는 글을 수정하고, 내용을 검토한 뒤 직접 발행할 수 있어요. 비공개 글과 임시글도 글 관리에서 확인합니다.</p><small>아래는 공개 글 목록입니다. 공개 글을 불러오는 것은 계정 로그인과 별개이며, 초안 보관은 이 PC에 저장됩니다.</small></div>
+      <div class="blog-connect"><label for="blog-select">내 블로그</label><select id="blog-select"></select><button id="add-blog" class="text-button">＋ 블로그 추가</button><span id="library-updated" role="status"></span></div>
+      <div class="library-guide"><strong>로그인한 계정의 블로그와 글을 불러옵니다</strong><p><b>티스토리 로그인</b>을 누르면 내 블로그를 자동으로 찾습니다. 블로그가 여러 개면 사용할 블로그를 선택하세요. 글 수정은 <b>글 관리</b>에서 이어서 할 수 있어요.</p><small>아래는 연결한 블로그의 공개 글 목록입니다. 비공개 글과 임시글은 글 관리에서 확인하며, 앱에서 보관한 초안은 이 PC에 저장됩니다.</small></div>
       <div class="library-filters"><input id="post-search" type="search" placeholder="제목이나 내용으로 글 찾기" aria-label="기존 글 검색"><select id="post-category" aria-label="카테고리 필터"><option value="">모든 카테고리</option></select><span id="public-post-count">공개 글 0개</span></div>
       <p id="library-warning" class="library-warning" role="status" hidden></p>
       <div id="public-posts" class="public-posts"></div>
