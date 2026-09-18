@@ -70,7 +70,7 @@ try {
   assert.deepEqual((await request(`/api/jobs/${job.id}`)).draft.category,items[2]);
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({ok:true,checks:['read and loading lock','duplicate child names','save and reopen','preserve on regeneration','failed read retains selection','renamed category reselect','explicit no-category and legacy default','independent jobs','mobile layout'],screenshots}));
-  win.destroy();await new Promise(resolve=>server.close(resolve));app.exit(0);
+  win.destroy();await new Promise(resolve=>{server.close(resolve);server.closeAllConnections();});app.exit(0);
 } catch(error) {console.error(error);if(win&&!win.isDestroyed())win.destroy();server.close();app.exit(1);}
 }
 run().catch(error=>{console.error(error);app.exit(1);});

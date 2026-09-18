@@ -77,7 +77,7 @@ async function run() {
     assert.equal(calls.length,2);assert.equal(calls[1].writing.prompt,'');assert.equal(calls[1].style,defaultPrompt);
     assert.equal(fs.readFileSync(path.join(root,'profile.md'),'utf8'),defaultPrompt);assert.deepEqual(errors,[]);
     console.log(JSON.stringify({ok:true,checks:['pre-draft category persistence','five editable examples','default prompt preserved','unsaved category switching','separate saves','conflict recovery','first-generation prompt routing','default fallback','mobile layout'],screenshots}));
-    win.destroy();await new Promise(resolve=>server.close(resolve));app.exit(0);
+    win.destroy();await new Promise(resolve=>{server.close(resolve);server.closeAllConnections();});app.exit(0);
   } catch(error) {console.error(error);if(win&&!win.isDestroyed())win.destroy();server.close();app.exit(1);}
 }
 run().catch(error=>{console.error(error);app.exit(1);});

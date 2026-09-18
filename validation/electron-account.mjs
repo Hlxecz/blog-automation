@@ -132,7 +132,7 @@ try {
   assert.ok(publicRequests.every(url => !url.includes('old-blog') && !url.includes('your-blog')));
   assert.deepEqual(errors, []);
   console.log('PASS: account login, automatic single-blog connection, multiple-blog choice, account switch, public posts and category refresh, ownership checks, cancellation, empty/changed account, CSRF, data preservation and mobile layout.');
-  win.destroy(); await new Promise(resolve => server.close(resolve)); app.exit(0);
+  win.destroy(); await new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }); app.exit(0);
 } catch (error) {
   console.error(error); if (win && !win.isDestroyed()) win.destroy(); if (remote && !remote.isDestroyed()) remote.destroy(); server?.close(); app.exit(1);
 }
