@@ -26,6 +26,7 @@ jobs:
       - run: npm run test:categories
       - run: npm run test:writing
       - run: npm run test:setup
+      - run: npm run test:account
       - run: npm run build:exe
       - uses: actions/upload-artifact@v7
         with:

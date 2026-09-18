@@ -80,7 +80,7 @@ try {
   recoveredDraft=true;
   assert.equal((await reader({blogUrl:'https://example.tistory.com'})).length,5);
   assert.ok(!visited.includes('/manage/newpost/'), 'category reading must not open the editor or its draft recovery');
-  await assert.rejects(reader({blogUrl:'https://your-blog.tistory.com'}),/내 블로그/);
+  await assert.rejects(reader({blogUrl:'https://your-blog.tistory.com'}),/로그인.*블로그/);
   recoveredDraft=false;
   let marked = false;
   const publisher = createTistoryPublisher({ openWindow, fetchPublic: async url => {

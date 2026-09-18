@@ -41,6 +41,7 @@
    npm run test:categories
    npm run test:writing
    npm run test:setup
+   npm run test:account
    npm run build:exe
    ```
 

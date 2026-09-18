@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { newJob, readyJob, prepareJob, renderDraft, buildPreview, listJobs } from './blog.mjs';
 import { generate } from './generate.mjs';
 import { checkAI, providers } from './ai.mjs';
-import { createLibrary } from './tistory.mjs';
+import { createLibrary, blogAddress } from './tistory.mjs';
 import { createCategories } from './categories.mjs';
 import { createStyles } from './style.mjs';
 import { createWritingPrompts } from './writing-prompts.mjs';
@@ -25,13 +25,16 @@ const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 const fail = (condition, message, status = 400) => { if (!condition) throw Object.assign(new Error(message), { status }); };
 const MIME = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.js': 'text/javascript', '.css': 'text/css', '.html': 'text/html' };
 
-export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), generator = generate, checkGenerator = checkAI, fetchPublic = fetch, publishAdapter = null, categoryReader = null, styleAnalyzer, fetchStyle, fetchReference, notionReader } = {}) {
+export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), generator = generate, checkGenerator = checkAI, fetchPublic = fetch, publishAdapter = null, categoryReader = null, accountReader = null, styleAnalyzer, fetchStyle, fetchReference, notionReader } = {}) {
   const c = json(path.join(root, 'tistory.config.json'));
   let library = createLibrary(root, c.blogUrl, fetchPublic);
   let categories = createCategories({ root, blogUrl: c.blogUrl, reader: categoryReader });
   const styles = createStyles({ root, profileFile: path.resolve(root, c.styleProfile), analyzer: styleAnalyzer, fetchPage: fetchStyle });
   let writingPrompts = createWritingPrompts({ root, blogUrl: c.blogUrl });
   let publications = createPublications({ adapter: publishAdapter, blogUrl: c.blogUrl, tocMode: c.tocMode });
+  let accountBlogs = null, connectingTistory = false;
+  const accountState = () => ({ canConnect: !!accountReader, busy: connectingTistory, blogs: accountBlogs });
+  const listedBlogs = () => accountBlogs || library.list();
   const inbox = path.resolve(root, c.inbox), output = path.resolve(root, c.output);
   const token = randomBytes(32).toString('hex');
   const active = new Set();
@@ -181,9 +184,28 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
       if (req.headers.origin) fail(req.headers.origin === url.origin, '허용되지 않은 요청입니다.', 403);
       if (!['GET', 'HEAD'].includes(req.method)) fail(req.headers['x-app-token'] === token, '앱을 새로고침한 뒤 다시 시도해 주세요.', 403);
       const route = url.pathname;
+      if (!['GET', 'HEAD'].includes(req.method)) fail(!connectingTistory, '티스토리 로그인 확인이 끝난 뒤 다시 시도해 주세요.', 409);
+      if (route === '/api/tistory/connect' && req.method === 'POST') {
+        fail(!!accountReader, '티스토리 계정 연결은 데스크톱 앱에서 사용할 수 있어요.', 409);
+        fail(!server.hasActiveGeneration(), '진행 중인 작업이 끝난 뒤 로그인해 주세요.', 409);
+        connectingTistory = true;
+        accountBlogs = null;
+        try {
+          const found = await accountReader();
+          fail(Array.isArray(found) && found.length > 0 && found.length <= 12, '로그인한 계정의 블로그 목록을 읽지 못했습니다.');
+          const blogs = found.map(item => ({ ...blogAddress(item.url), title: String(item.title || '').slice(0, 200) || blogAddress(item.url).title }));
+          blogs.forEach(blog => requireBlog(blog.url));
+          fail(new Set(blogs.map(blog => blog.id)).size === blogs.length, '블로그 목록이 중복되었습니다. 다시 로그인해 주세요.');
+          for (const blog of blogs) library.add(blog.url);
+          accountBlogs = blogs;
+        } catch (error) { throw Object.assign(new Error(error.message), { status: error.status || 400 }); }
+        finally { connectingTistory = false; }
+        return sendJson(res, accountState());
+      }
       if (route === '/api/blog-settings' && req.method === 'PUT') {
         const body = await bodyJson(req);
         fail(!server.hasActiveGeneration(), '진행 중인 작업이 끝난 뒤 블로그 주소를 변경해 주세요.', 409);
+        if (body.fromAccount || accountBlogs) fail(accountBlogs?.some(blog => blog.url === blogAddress(body.blogUrl).url), '로그인한 계정의 블로그를 선택해 주세요.', 409);
         c.blogUrl = saveBlogAddress(root, body.blogUrl);
         library = createLibrary(root, c.blogUrl, fetchPublic);
         library.add(c.blogUrl);
@@ -197,6 +219,7 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
       if (route === '/api/categories' && req.method === 'GET') return sendJson(res, categories.state());
       if (route === '/api/categories' && req.method === 'POST') {
         requireBlog(c.blogUrl);
+        if (accountBlogs) fail(accountBlogs.some(blog => blog.url === c.blogUrl), '로그인한 계정의 블로그를 먼저 선택해 주세요.', 409);
         fail(active.size === 0 && !styles.isRunning() && !checkingAI, '진행 중인 작업이 끝난 뒤 카테고리를 불러와 주세요.', 409);
         return sendJson(res, await categories.refresh());
       }
@@ -223,16 +246,17 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
         fail(!checkingAI, 'AI 연결 확인이 끝난 뒤 다시 시도해 주세요.', 409);
         return sendJson(res, styles.start(b.urls, { provider }), 202);
       }
-      if (route === '/api/blogs' && req.method === 'GET') return sendJson(res, library.list());
+      if (route === '/api/blogs' && req.method === 'GET') return sendJson(res, listedBlogs());
       if (route === '/api/blogs' && req.method === 'POST') {
         const b = await bodyJson(req);
         return sendJson(res, library.add(b.url), 201);
       }
       const remote = route.match(/^\/api\/blogs\/([a-z0-9-]+)(?:\/(sync))?$/);
+      if (remote && accountBlogs) fail(accountBlogs.some(blog => blog.id === remote[1]), '로그인한 계정의 블로그를 선택해 주세요.', 409);
       if (remote && req.method === 'GET' && !remote[2]) return sendJson(res, library.read(remote[1]));
       if (remote && req.method === 'POST' && remote[2] === 'sync') return sendJson(res, await library.sync(remote[1]));
       if (route === '/api/bootstrap' && req.method === 'GET') { await connectionCheck; return sendJson(res, {
-        token, blogUrl: c.blogUrl, blogConfigured: blogConfigured(c.blogUrl), connected: ai.connected, ai, canPublish: !!publishAdapter, categories: categories.state(), writingPrompts: writingPrompts.state(),
+        token, blogUrl: c.blogUrl, blogConfigured: blogConfigured(c.blogUrl), tistory: accountState(), connected: ai.connected, ai, canPublish: !!publishAdapter, categories: categories.state(), writingPrompts: writingPrompts.state(),
         style: exists(path.resolve(root, c.styleProfile)) ? fs.readFileSync(path.resolve(root, c.styleProfile), 'utf8') : ''
       }); }
       if (route === '/api/jobs' && req.method === 'GET') {
@@ -258,6 +282,7 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
         }
         if (action === 'publish' && req.method === 'POST') {
           requireBlog(c.blogUrl);
+          if (accountBlogs) fail(accountBlogs.some(blog => blog.url === c.blogUrl), '로그인한 계정의 블로그를 먼저 선택해 주세요.', 409);
           if (publications.isRunning(dir) || publications.state(dir).phase === 'published') return sendJson(res,readJob(id));
           fail(active.size === 0,'다른 글을 작성하거나 발행하고 있습니다. 완료 후 시도해 주세요.',409);
           const b=await bodyJson(req);
@@ -395,7 +420,7 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
       else res.end();
     }
   });
-  server.hasActiveGeneration = () => active.size > 0 || styles.isRunning() || categories.isRunning();
+  server.hasActiveGeneration = () => active.size > 0 || styles.isRunning() || categories.isRunning() || connectingTistory || checkingAI;
   return server;
 }
 
