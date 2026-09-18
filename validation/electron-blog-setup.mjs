@@ -40,7 +40,7 @@ async function run(){
     win.setSize(390,900);await pause(200);assert.ok(await js(`document.documentElement.scrollWidth<=innerWidth`));fs.writeFileSync(path.join(evidence,'mobile.png'),(await win.webContents.capturePage()).toPNG());
     assert.equal(fs.readFileSync(path.join(root,'profile.md'),'utf8'),'기존 말투');
     console.log('PASS: first-run setup, no example links/reads, invalid address rejected, save without restart, category read, reopen and settings preserved.');
-    win.destroy();await new Promise(resolve=>server.close(resolve));app.exit(0);
+    win.destroy();await new Promise(resolve=>{server.close(resolve);server.closeAllConnections();});app.exit(0);
   }catch(error){console.error(error);win?.destroy();server.close();app.exit(1);}
 }
 run().catch(error=>{console.error(error);app.exit(1);});
