@@ -10,6 +10,7 @@ import { createLibrary } from './tistory.mjs';
 import { createCategories } from './categories.mjs';
 import { createStyles } from './style.mjs';
 import { createWritingPrompts } from './writing-prompts.mjs';
+import { blogConfigured, requireBlog, saveBlogAddress } from './blog-settings.mjs';
 import { normalizeReferences, readReferences, collectReferences, referenceReview } from './references.mjs';
 import { createPublications, draftDigest } from './publication.mjs';
 import { jobStorage, deleteJobStorage } from './storage.mjs';
@@ -26,11 +27,11 @@ const MIME = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
 
 export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), generator = generate, checkGenerator = checkAI, fetchPublic = fetch, publishAdapter = null, categoryReader = null, styleAnalyzer, fetchStyle, fetchReference, notionReader } = {}) {
   const c = json(path.join(root, 'tistory.config.json'));
-  const library = createLibrary(root, c.blogUrl, fetchPublic);
-  const categories = createCategories({ root, blogUrl: c.blogUrl, reader: categoryReader });
+  let library = createLibrary(root, c.blogUrl, fetchPublic);
+  let categories = createCategories({ root, blogUrl: c.blogUrl, reader: categoryReader });
   const styles = createStyles({ root, profileFile: path.resolve(root, c.styleProfile), analyzer: styleAnalyzer, fetchPage: fetchStyle });
-  const writingPrompts = createWritingPrompts({ root, blogUrl: c.blogUrl });
-  const publications = createPublications({ adapter: publishAdapter, blogUrl: c.blogUrl, tocMode: c.tocMode });
+  let writingPrompts = createWritingPrompts({ root, blogUrl: c.blogUrl });
+  let publications = createPublications({ adapter: publishAdapter, blogUrl: c.blogUrl, tocMode: c.tocMode });
   const inbox = path.resolve(root, c.inbox), output = path.resolve(root, c.output);
   const token = randomBytes(32).toString('hex');
   const active = new Set();
@@ -180,10 +181,22 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
       if (req.headers.origin) fail(req.headers.origin === url.origin, '허용되지 않은 요청입니다.', 403);
       if (!['GET', 'HEAD'].includes(req.method)) fail(req.headers['x-app-token'] === token, '앱을 새로고침한 뒤 다시 시도해 주세요.', 403);
       const route = url.pathname;
+      if (route === '/api/blog-settings' && req.method === 'PUT') {
+        const body = await bodyJson(req);
+        fail(!server.hasActiveGeneration(), '진행 중인 작업이 끝난 뒤 블로그 주소를 변경해 주세요.', 409);
+        c.blogUrl = saveBlogAddress(root, body.blogUrl);
+        library = createLibrary(root, c.blogUrl, fetchPublic);
+        library.add(c.blogUrl);
+        categories = createCategories({ root, blogUrl: c.blogUrl, reader: categoryReader });
+        writingPrompts = createWritingPrompts({ root, blogUrl: c.blogUrl });
+        publications = createPublications({ adapter: publishAdapter, blogUrl: c.blogUrl, tocMode: c.tocMode });
+        return sendJson(res, { blogUrl: c.blogUrl, blogConfigured: true, categories: categories.state(), writingPrompts: writingPrompts.state() });
+      }
       if (route === '/api/writing-prompts' && req.method === 'GET') return sendJson(res, writingPrompts.state());
       if (route === '/api/writing-prompts' && req.method === 'PUT') return sendJson(res, writingPrompts.save(await bodyJson(req)));
       if (route === '/api/categories' && req.method === 'GET') return sendJson(res, categories.state());
       if (route === '/api/categories' && req.method === 'POST') {
+        requireBlog(c.blogUrl);
         fail(active.size === 0 && !styles.isRunning() && !checkingAI, '진행 중인 작업이 끝난 뒤 카테고리를 불러와 주세요.', 409);
         return sendJson(res, await categories.refresh());
       }
@@ -219,7 +232,7 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
       if (remote && req.method === 'GET' && !remote[2]) return sendJson(res, library.read(remote[1]));
       if (remote && req.method === 'POST' && remote[2] === 'sync') return sendJson(res, await library.sync(remote[1]));
       if (route === '/api/bootstrap' && req.method === 'GET') { await connectionCheck; return sendJson(res, {
-        token, blogUrl: c.blogUrl, connected: ai.connected, ai, canPublish: !!publishAdapter, categories: categories.state(), writingPrompts: writingPrompts.state(),
+        token, blogUrl: c.blogUrl, blogConfigured: blogConfigured(c.blogUrl), connected: ai.connected, ai, canPublish: !!publishAdapter, categories: categories.state(), writingPrompts: writingPrompts.state(),
         style: exists(path.resolve(root, c.styleProfile)) ? fs.readFileSync(path.resolve(root, c.styleProfile), 'utf8') : ''
       }); }
       if (route === '/api/jobs' && req.method === 'GET') {
@@ -244,6 +257,7 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
           return sendJson(res, { id, deletedBytes });
         }
         if (action === 'publish' && req.method === 'POST') {
+          requireBlog(c.blogUrl);
           if (publications.isRunning(dir) || publications.state(dir).phase === 'published') return sendJson(res,readJob(id));
           fail(active.size === 0,'다른 글을 작성하거나 발행하고 있습니다. 완료 후 시도해 주세요.',409);
           const b=await bodyJson(req);

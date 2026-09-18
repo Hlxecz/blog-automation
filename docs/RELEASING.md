@@ -40,6 +40,7 @@
    npm run test:desktop
    npm run test:categories
    npm run test:writing
+   npm run test:setup
    npm run build:exe
    ```
 

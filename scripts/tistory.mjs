@@ -70,7 +70,7 @@ export function createLibrary(root, initialUrl, fetcher = fetch) {
   const catalog = path.join(root, 'library', 'blogs.json');
   const cacheFile = id => path.join(root, 'library', `${id}.json`);
   const pending = new Map();
-  function list() { return fs.existsSync(catalog) ? read(catalog) : [blogAddress(initialUrl)]; }
+  function list() { return (fs.existsSync(catalog) ? read(catalog) : [blogAddress(initialUrl)]).filter(blog => blog.id !== 'your-blog'); }
   function get(id) { return list().find(b => b.id === id) || fail('등록한 블로그를 찾을 수 없습니다.'); }
   function add(input) {
     const blog = blogAddress(input), blogs = list();

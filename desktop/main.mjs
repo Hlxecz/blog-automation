@@ -4,6 +4,7 @@ import path from 'node:path';
 import { createApp } from '../scripts/server.mjs';
 import { initializeData } from './data.mjs';
 import { randomUUID } from 'node:crypto';
+import { blogConfigured } from '../scripts/blog-settings.mjs';
 
 app.setName('H.Dev Studio');
 // Keep development windows and sessions independent from the installed EXE.
@@ -11,6 +12,12 @@ if (!app.isPackaged) app.setPath('userData', path.join(app.getPath('appData'), '
 app.setAppUserModelId('com.hdev.studio');
 let mainWindow, server, origin, dataRoot;
 const remoteWindows = new Set();
+function openBlogSettings() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.show(); mainWindow.focus();
+    mainWindow.webContents.executeJavaScript("window.dispatchEvent(new Event('hdev:blog-settings'))").catch(() => {});
+  }
+}
 
 function tistoryUrl(value) {
   try { const u = new URL(value); return u.protocol === 'https:' && !u.username && !u.password && !u.port &&
@@ -47,6 +54,7 @@ function protectNavigation(win, local = false) {
 
 function openTistory(url) {
   if (!tistoryUrl(url)) return;
+  if (new URL(url).hostname === 'your-blog.tistory.com') { openBlogSettings(); return; }
   // Separate in-memory browser session. No app preload or Node access is exposed to Tistory.
   const win = new BrowserWindow({ width: 1220, height: 900, minWidth: 800, minHeight: 620, title: '티스토리 · H.Dev Studio',
     icon: path.join(app.getAppPath(), 'desktop/assets/icon.png'),
@@ -62,7 +70,12 @@ function openTistory(url) {
       { role: 'close', label: '창 닫기' }
     ] }, { label: '편집', submenu: [{ role: 'undo', label: '실행 취소' }, { role: 'redo', label: '다시 실행' }, { type: 'separator' }, { role: 'cut', label: '잘라내기' }, { role: 'copy', label: '복사' }, { role: 'paste', label: '붙여넣기' }, { role: 'selectAll', label: '전체 선택' }] }
   ]));
-  win.loadURL(url).catch(() => dialog.showMessageBox(win, { type: 'error', message: '티스토리를 열지 못했습니다.', detail: '인터넷 연결을 확인하거나 메뉴에서 브라우저로 열어 주세요.' }));
+  win.loadURL(url).catch(error => {
+    // A redirect or a second navigation can cancel the initial load during login.
+    if (win.isDestroyed() || error.code === 'ERR_ABORTED' || error.errno === -3) return;
+    dialog.showMessageBox(win, { type: 'error', message: '티스토리 페이지를 열지 못했습니다.',
+      detail: `접속 주소: ${url}\n\n내 블로그 설정의 주소와 인터넷 연결을 확인해 주세요. 다시 로그인하려면 이 창을 닫고 로그인 / 글 관리를 눌러 주세요.` });
+  });
   return win;
 }
 
@@ -114,7 +127,11 @@ else {
     Menu.setApplicationMenu(Menu.buildFromTemplate([
       { label: '작업실', submenu: [
         { label: '자료 폴더 열기', click: openDataFolder },
-        { label: '티스토리 로그인 / 글 관리', click: () => openTistory(`${JSON.parse(fs.readFileSync(path.join(dataRoot, 'tistory.config.json'), 'utf8')).blogUrl}/manage`) },
+        { label: '내 블로그 설정', click: openBlogSettings },
+        { label: '티스토리 로그인 / 글 관리', click: () => {
+          const blogUrl = JSON.parse(fs.readFileSync(path.join(dataRoot, 'tistory.config.json'), 'utf8')).blogUrl;
+          if (blogConfigured(blogUrl)) openTistory(`${blogUrl}/manage`); else openBlogSettings();
+        } },
         { type: 'separator' }, { role: 'close', label: '창 닫기' }
       ] },
       { label: '편집', submenu: [{ role: 'undo', label: '실행 취소' }, { role: 'redo', label: '다시 실행' }, { type: 'separator' }, { role: 'cut', label: '잘라내기' }, { role: 'copy', label: '복사' }, { role: 'paste', label: '붙여넣기' }, { role: 'selectAll', label: '전체 선택' }] },

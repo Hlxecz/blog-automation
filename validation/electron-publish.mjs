@@ -41,13 +41,21 @@ el('publish-layer-btn').onclick=()=>el('panel').hidden=false;
 el('open20').onclick=()=>{el('open0').checked=false;el('publish-btn').textContent='공개 발행'};
 el('publish-btn').onclick=()=>{if(!el('open20').checked)throw Error('not public');window.submits++;const category=categoryItems.find(item=>item.id===window.selectedCategory);window.published='<html><head><meta property="og:title" content="'+el('post-title-inp').value+'"><meta property="og:image" content="'+body.querySelector('img').src+'"></head><body>'+(category.id==='0'?'':'<a class="category" href="/category/'+category.path.map(encodeURIComponent).join('/')+'">'+category.path.join('/')+'</a>')+body.innerHTML+'</body></html>'};
 </script>`;
+const management = `<!doctype html><div class="opt_blog"><button class="btn_opt">보기</button><div class="scroll_opt" hidden><strong>카테고리별 보기</strong><ul class="list_opt">
+<li><a class="lab_btn" href="/manage/posts"><span class="inner_lab">카테고리 전체보기</span></a></li>
+<li><a class="lab_btn" href="/manage/posts?category=0"><span class="inner_lab">카테고리 없음</span></a></li>
+<li><a class="lab_btn" href="/manage/posts?category=10"><span class="inner_lab">Language</span></a><ul><li><a class="lab_btn" href="/manage/posts?category=11"><span class="inner_lab">Java</span></a></li></ul></li>
+<li><a class="lab_btn" href="/manage/posts?category=20"><span class="inner_lab">Study</span></a><ul><li><a class="lab_btn" href="/manage/posts?category=21"><span class="inner_lab">Java</span></a></li></ul></li>
+</ul></div></div><script>document.querySelector('.btn_opt').onclick=()=>{document.querySelector('.opt_blog').classList.add('opt_open');document.querySelector('.scroll_opt').hidden=false;};</script>`;
 let missingCategory=false,recoveredDraft=false;
+const visited=[];
 await isolated.protocol.handle('https', request => {
   const url = new URL(request.url);
+  visited.push(url.pathname);
   assert.equal(url.origin, 'https://example.tistory.com');
   if (url.pathname.startsWith('/test-photo/')) return new Response(png, { headers: { 'Content-Type': 'image/png' } });
   const fixture=editor.replace('/* fixture-category-variant */',missingCategory?"categoryItems=categoryItems.filter(item=>item.id!=='21');":'').replace('/* fixture-recovered-draft */',recoveredDraft?"el('post-title-inp').value='복구된 초안';body.textContent='유지할 본문';":'');
-  return new Response(url.pathname === '/manage' ? '<a href="/manage/newpost/">글쓰기</a>' : fixture, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+  return new Response(url.pathname === '/manage/posts' ? management : url.pathname === '/manage' ? '<a href="/manage/newpost/">글쓰기</a>' : fixture, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
 });
 let win;
 const openWindow = url => { win = new BrowserWindow({ show: false, webPreferences: { session: isolated, sandbox: true, contextIsolation: true, nodeIntegration: false } }); win.loadURL(url); return win; };
@@ -71,8 +79,9 @@ try {
   assert.equal(categories.length,5);assert.deepEqual(categories[4],draft.category);
   recoveredDraft=true;
   assert.equal((await reader({blogUrl:'https://example.tistory.com'})).length,5);
-  assert.equal(win.isDestroyed(),false);assert.equal(await win.webContents.executeJavaScript('document.getElementById("post-title-inp").value'),'복구된 초안');
-  win.destroy();recoveredDraft=false;
+  assert.ok(!visited.includes('/manage/newpost/'), 'category reading must not open the editor or its draft recovery');
+  await assert.rejects(reader({blogUrl:'https://your-blog.tistory.com'}),/내 블로그/);
+  recoveredDraft=false;
   let marked = false;
   const publisher = createTistoryPublisher({ openWindow, fetchPublic: async url => {
     if (url.endsWith('/rss')) return new Response('', { status: 404 });
@@ -115,7 +124,7 @@ try {
   win.destroy();missingCategory=true;
   await assert.rejects(publisher({blogUrl:'https://example.tistory.com',draft,manifest,directory:root,onProgress:()=>{},beforeSubmit:()=>assert.fail('missing category must not submit')}),/카테고리가 삭제/);
   assert.equal(await win.webContents.executeJavaScript('window.submits'),0);assert.equal(await win.webContents.executeJavaScript('document.querySelectorAll("#body img").length'),0);
-  console.log('PASS: category read and recovered-draft preservation; duplicate child names selected by ID; missing category stops before upload; category-none and legacy default; uploads, cover, body, tags, one submission, public category verification, dry run. No real Tistory requests.');
+  console.log('PASS: category read from management without opening an editor; placeholder rejected; duplicate child names selected by ID; missing category stops before upload; category-none and legacy default; uploads, cover, body, tags, one submission, public category verification, dry run. No real Tistory requests.');
   win.destroy(); app.exit(0);
 } catch (error) { console.error(error); win?.destroy(); app.exit(1); }
 }
