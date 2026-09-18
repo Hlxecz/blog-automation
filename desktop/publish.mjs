@@ -2,6 +2,7 @@ import path from 'node:path';
 import { publicationHtml, verifyPublishedHtml } from '../scripts/publication.mjs';
 import { parseFeed } from '../scripts/tistory.mjs';
 import { articleBlocks, categoriesFromEditor, normalizeCategory } from '../web/draft-model.js';
+import { requireBlog } from '../scripts/blog-settings.mjs';
 
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const error = message => { throw new Error(message); };
@@ -36,6 +37,32 @@ export async function waitForPublishedPost({ blogUrl, draft, uploaded, candidate
 // Only the editor's public DOM and TinyMCE API are used; no private write API.
 function editorCommand(command, data) {
   const visible = el => !!el && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+  // Observed on /manage/posts on 2026-09-18. Read the view filter without opening an editor.
+  if (command === 'managementCategories') {
+    const button = [...document.querySelectorAll('.opt_blog > button.btn_opt')].find(el => visible(el) && el.textContent.trim() === '보기');
+    if (!button) return null;
+    const menu = button.parentElement;
+    if (!menu.classList.contains('opt_open')) { button.click(); return null; }
+    const list = menu.querySelector('.scroll_opt > ul.list_opt');
+    if (!list || !visible(list)) return null;
+    const result = [];
+    const add = (link, child = false) => {
+      if (!link) throw new Error('카테고리 목록 구조가 달라졌습니다.');
+      const url = new URL(link.href);
+      if (url.origin !== location.origin || url.pathname !== '/manage/posts') throw new Error('카테고리 링크가 대상 블로그와 다릅니다.');
+      const id = url.searchParams.get('category');
+      if (id === null && !child) return;
+      const name = link.querySelector('.inner_lab')?.textContent.trim();
+      if (!name) throw new Error('카테고리 이름을 읽지 못했습니다.');
+      result.push({ id, label: (child ? '- ' : '') + name });
+    };
+    for (const item of list.children) {
+      add(item.querySelector(':scope > a.lab_btn'));
+      for (const child of item.querySelectorAll(':scope > ul > li')) add(child.querySelector(':scope > a.lab_btn'), true);
+    }
+    if (result.length !== list.querySelectorAll('a[href*="category="]').length) throw new Error('카테고리 목록을 모두 읽지 못했습니다.');
+    return result;
+  }
   const editor = window.tinymce?.get('editor-tistory');
   const title = document.getElementById('post-title-inp');
   const normalize = text => String(text || '').replace(/\s+/g, '');
@@ -134,11 +161,12 @@ function editorCommand(command, data) {
   throw new Error('지원하지 않는 편집 동작입니다.');
 }
 
-function editorSession(openWindow, blogUrl, onProgress = () => {}) {
+function editorSession(openWindow, blogUrl, onProgress = () => {}, startPath = '/manage') {
+    requireBlog(blogUrl);
     const blog = new URL(blogUrl);
     if (blog.protocol !== 'https:' || !/^[a-z0-9-]+\.tistory\.com$/.test(blog.hostname) || blog.username || blog.password || blog.port)
       error('발행할 티스토리 블로그 주소가 올바르지 않습니다.');
-    const win = openWindow(`${blog.origin}/manage`), wc = win.webContents;
+    const win = openWindow(`${blog.origin}${startPath}`), wc = win.webContents;
     const evalEditor = async (command, data = {}) => {
       if (win.isDestroyed()) error('티스토리 창이 닫혔습니다.');
       if (new URL(wc.getURL() || 'about:blank').origin !== blog.origin) error('로그인이 필요하거나 다른 블로그로 이동했습니다.');
@@ -176,11 +204,17 @@ async function readCategories({ blog, evalEditor, until }) {
 
 export function createTistoryCategoryReader({ openWindow }) {
   return async ({ blogUrl }) => {
-    const session = editorSession(openWindow, blogUrl);
-    await session.open();
-    const categories = await readCategories(session);
-    // Never close a recovered draft or content typed by the user in this window.
-    if (await session.evalEditor('empty')) session.win.close();
+    const session = editorSession(openWindow, blogUrl, undefined, '/manage/posts');
+    const options = await session.until(async () => {
+      if (session.wc.isLoadingMainFrame()) return null;
+      const location = new URL(session.wc.getURL() || 'about:blank');
+      if (location.origin !== session.blog.origin) return null;
+      if (location.pathname === '/') error('이 블로그의 관리 권한을 확인하지 못했습니다. 내 블로그 주소와 로그인한 계정을 확인해 주세요.');
+      if (location.pathname !== '/manage/posts') return null;
+      return session.evalEditor('managementCategories');
+    }, '글 관리에서 카테고리를 읽지 못했습니다. 블로그 주소와 로그인 상태를 확인해 주세요.', 5 * 60 * 1000);
+    const categories = categoriesFromEditor(options, session.blog.origin);
+    session.win.close();
     return categories;
   };
 }

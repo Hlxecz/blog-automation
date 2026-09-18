@@ -54,6 +54,41 @@ const openAIHelp = createAIHelp({ api, modal, toast, getAI: () => settings?.ai, 
 } });
 $('help-nav').onclick = openAIHelp;
 window.addEventListener('hdev:ai-help', openAIHelp);
+function openBlogSettings() {
+  if (!settings) return;
+  const form = document.createElement('form'); form.className = 'add-blog-form';
+  const label = document.createElement('label'); label.htmlFor = 'publish-blog-address'; label.textContent = '글을 발행할 내 티스토리 주소';
+  const input = document.createElement('input'); input.id = 'publish-blog-address'; input.type = 'url'; input.required = true;
+  input.placeholder = 'https://내블로그이름.tistory.com'; input.value = settings.blogConfigured ? settings.blogUrl : '';
+  const help = document.createElement('p'); help.textContent = '티스토리 로그인과 카테고리 조회, 발행에 사용할 주소입니다. 로그인만으로 블로그 주소가 자동 설정되지는 않아요.';
+  const status = document.createElement('p'); status.id = 'blog-settings-status'; status.setAttribute('role', 'status');
+  const save = document.createElement('button'); save.type = 'submit'; save.className = 'button primary'; save.textContent = '블로그 주소 저장';
+  form.append(label, input, help, status, save);
+  form.onsubmit = async event => {
+    event.preventDefault(); if (busy()) { status.textContent = '진행 중인 작업이 끝난 뒤 저장해 주세요.'; return; }
+    if (styleSettings.isDirty() || categoryPrompts.isDirty()) { status.textContent = '편집 중인 말투·카테고리 지침을 먼저 저장해 주세요.'; return; }
+    save.disabled = true; input.disabled = true; status.textContent = '저장 중…';
+    try {
+      await saveAll();
+      const result = await api('/api/blog-settings', { method: 'PUT', json: { blogUrl: input.value.trim() } });
+      Object.assign(settings, result); library = null; blogs = [];
+      updateBlogLinks(); renderCategories(); updateControls();
+      if (!$('style-page').hidden) await categoryPrompts.open(currentCategory());
+      if (!$('library-page').hidden) { blogs = await api('/api/blogs'); await loadBlog(new URL(settings.blogUrl).hostname.split('.')[0]); }
+      $('modal').close(); toast('내 블로그 주소를 저장했어요. 로그인 / 글 관리에서 로그인해 주세요.');
+    } catch (error) { status.textContent = error.message; }
+    finally { save.disabled = false; input.disabled = false; }
+  };
+  modal(settings.blogConfigured ? '내 블로그 설정' : '먼저 내 블로그를 연결해 주세요', form); input.focus();
+}
+function updateBlogLinks() {
+  if (settings.blogConfigured) { $('blog-link').href = settings.blogUrl; $('blog-link').textContent = '내 블로그 열기 ↗'; }
+  else { $('blog-link').removeAttribute('href'); $('blog-link').textContent = '내 블로그 설정'; }
+}
+$('blog-settings-nav').onclick = openBlogSettings;
+$('blog-link').onclick = event => { if (!settings?.blogConfigured) { event.preventDefault(); openBlogSettings(); } };
+$('manage-blog').onclick = event => { if (!settings?.blogConfigured) { event.preventDefault(); openBlogSettings(); } };
+window.addEventListener('hdev:blog-settings', openBlogSettings);
 $('close-modal').onclick = () => $('modal').close();
 $('modal').addEventListener('cancel', e => { if (deleting) e.preventDefault(); });
 $('modal').addEventListener('click', e => { if (!deleting && e.target === $('modal') && (e.offsetX < 0 || e.offsetY < 0 || e.offsetX > $('modal').clientWidth || e.offsetY > $('modal').clientHeight)) $('modal').close(); });
@@ -105,6 +140,7 @@ async function pollCategories() {
   if (settings?.categories?.busy) categoryPollTimer = setTimeout(pollCategories, 1500);
 }
 async function refreshCategories() {
+  if (!settings.blogConfigured) { openBlogSettings(); throw new Error('먼저 내 블로그 주소를 저장해 주세요.'); }
   if (busy() || switching) return;
   try {
     await saveAll(); categoryLoading = true; renderCategories(); updateControls();
@@ -440,7 +476,7 @@ function updateControls() {
   $('delete-current').hidden = !current;
   $('delete-current').disabled = running || switching;
   const publication=current?.publication;
-  $('transfer').disabled = running || !draft || !settings?.canPublish || ['published','uncertain'].includes(publication?.phase);
+  $('transfer').disabled = running || !draft || !settings?.canPublish || !settings?.blogConfigured || ['published','uncertain'].includes(publication?.phase);
   $('transfer').textContent = publication?.phase==='published' ? '발행 완료' : publication?.phase==='removed' ? '티스토리에 다시 발행 ↗' : isPublishing(publication) ? '티스토리에 올리는 중…' : '티스토리에 발행 ↗';
   const publishStatus=$('publish-status'); publishStatus.replaceChildren();
   publishStatus.hidden=!draft && !publication?.message;
@@ -763,9 +799,10 @@ async function boot(){
   try{
     settings=await api('/api/bootstrap');token=settings.token;
     if (settings.categories?.busy) categoryPollTimer = setTimeout(pollCategories, 1500);
-    if(settings.blogUrl)$('blog-link').href=settings.blogUrl;
+    updateBlogLinks();
     await refreshJobs();const last=localStorage.getItem('hdev.current');
     if(last&&jobs.some(j=>j.id===last))await selectJob(last);else{renderPhotos();renderReferences();renderDraft();updateControls();}
+    if (!settings.blogConfigured) openBlogSettings();
   }catch(e){saveStatus('앱 연결 실패');toast('앱에 연결하지 못했어요. 실행 상태를 확인하고 새로고침해 주세요.',true);}
 }
 boot();
@@ -778,7 +815,8 @@ function showWorkspace() {
 function renderLibrary() {
   $('blog-select').replaceChildren(...blogs.map(b => new Option(b.title || b.id, b.id)));
   if (library) $('blog-select').value = library.id;
-  $('manage-blog').href = `${library?.url || settings?.blogUrl || 'https://your-blog.tistory.com'}/manage`;
+  if (settings?.blogConfigured) $('manage-blog').href = `${settings.blogUrl}/manage`;
+  else $('manage-blog').removeAttribute('href');
   $('library-updated').textContent = libraryLoading ? '공개 글을 불러오는 중…' : library?.syncedAt ? `${new Date(library.syncedAt).toLocaleString('ko-KR')} 불러옴` : '아직 불러오지 않았어요';
   $('sync-blog').disabled = libraryLoading; $('blog-select').disabled = libraryLoading; $('add-blog').disabled = libraryLoading;
   const categories = [...new Set((library?.posts || []).map(p => p.category).filter(Boolean))].sort();
@@ -811,6 +849,7 @@ async function loadBlog(id, sync = false) {
   finally { libraryLoading = false; renderLibrary(); }
 }
 $('library-nav').onclick = async () => {
+  if (!settings?.blogConfigured) { openBlogSettings(); return; }
   try {
     await saveAll(); blogs = await api('/api/blogs');
     document.querySelector('main').hidden = true; $('library-page').hidden = false; $('style-page').hidden = true;

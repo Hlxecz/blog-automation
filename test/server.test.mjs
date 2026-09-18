@@ -28,6 +28,7 @@ test('category selection before the first draft uses frozen prompts and keeps th
   assert.equal((await request(`/api/jobs/${id}`,'PUT',{...input,category:{...category,blogUrl:'https://other.tistory.com'}})).status,400);
   assert.deepEqual((await request(`/api/jobs/${id}`)).data.category,category);
   const start = await request(`/api/jobs/${id}/generate`,'POST'); assert.equal(start.status,202);
+  assert.equal((await request('/api/blog-settings','PUT',{blogUrl:'https://other.tistory.com'})).status,409);
   saved = await request('/api/writing-prompts','PUT',{category,prompt:'뉴스 새 지침',revision:saved.data.revision});
   fs.writeFileSync(path.join(root,'style.md'),'바뀐 기본 지침');
   wait=false; release();
@@ -43,6 +44,39 @@ test('category selection before the first draft uses frozen prompts and keeps th
   await request(`/api/jobs/${id}/generate`,'POST'); await settled(request,id);
   assert.deepEqual(received[2].writing,{category:{blogUrl:category.blogUrl,id:'0',path:['카테고리 없음']},prompt:''});
   assert.equal((await request('/api/style')).data.profile,'바뀐 기본 지침');
+});
+
+test('blog setup blocks example destinations and switches target without changing stored drafts or other settings', async t => {
+  let reads = 0;
+  const {root,request,id,job}=await fixture(t,undefined,null,{categoryReader:async({blogUrl})=>{reads++;return [{blogUrl,id:'0',path:['카테고리 없음']}];}});
+  const configFile=path.join(root,'tistory.config.json'), original=JSON.parse(fs.readFileSync(configFile));
+  const draft={...draftFor(job.images[0].name),category:{blogUrl:original.blogUrl,id:'0',path:['카테고리 없음']}};
+  await request(`/api/jobs/${id}/draft`,'PUT',{draft,review:''});
+  assert.equal((await request('/api/blog-settings','PUT',{blogUrl:'https://your-blog.tistory.com'})).status,409);
+  assert.equal((await request('/api/blog-settings','PUT',{blogUrl:'https://example.com'})).status,400);
+  assert.deepEqual(JSON.parse(fs.readFileSync(configFile)),original);
+  assert.equal((await request('/api/blog-settings','PUT',{blogUrl:'https://new-blog.tistory.com/'},{'X-App-Token':'bad'})).status,403);
+  const saved=await request('/api/blog-settings','PUT',{blogUrl:'https://new-blog.tistory.com/'});
+  assert.equal(saved.status,200);assert.equal(saved.data.blogConfigured,true);
+  assert.deepEqual(JSON.parse(fs.readFileSync(configFile)),{...original,blogUrl:'https://new-blog.tistory.com'});
+  assert.equal((await request('/api/bootstrap')).data.blogUrl,'https://new-blog.tistory.com');
+  assert.deepEqual((await request(`/api/jobs/${id}`)).data.draft,draft);
+  assert.equal((await request('/api/categories','POST')).data.blogUrl,'https://new-blog.tistory.com');assert.equal(reads,1);
+});
+
+test('an unconfigured app cannot open a category reader or publish to the example blog', async t => {
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'hdev-setup-test-'));
+  fs.writeFileSync(path.join(root,'tistory.config.json'),JSON.stringify({blogUrl:'https://your-blog.tistory.com',inbox:'inbox',output:'drafts',styleSamples:'style',styleProfile:'style.md'}));
+  const server=createApp({root,checkGenerator:async()=>true,categoryReader:async()=>assert.fail('must not open example blog'),publishAdapter:async()=>assert.fail('must not publish')});
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  t.after(async()=>{await new Promise(resolve=>server.close(resolve));assert.equal(path.dirname(root),path.resolve(os.tmpdir()));assert.ok(path.basename(root).startsWith('hdev-setup-test-'));fs.rmSync(root,{recursive:true,force:true});});
+  const origin=`http://127.0.0.1:${server.address().port}`;
+  const bootstrap=await(await fetch(origin+'/api/bootstrap')).json();assert.equal(bootstrap.blogConfigured,false);
+  const post=async route=>fetch(origin+route,{method:'POST',headers:{'X-App-Token':bootstrap.token,'Content-Type':'application/json'},body:'{}'});
+  assert.equal((await post('/api/categories')).status,409);
+  const job=await(await post('/api/jobs')).json();
+  assert.equal((await post(`/api/jobs/${job.id}/publish`)).status,409);
+  assert.deepEqual(await(await fetch(origin+'/api/blogs')).json(),[]);
 });
 
 test('category API locks reads, preserves selection on regeneration, rejects other blogs, and retains the default choice', async t => {

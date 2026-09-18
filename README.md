@@ -24,9 +24,9 @@
 
 ## Windows 앱 다운로드
 
-[H.Dev Studio 0.7.0 다운로드](https://github.com/Hlxecz/blog-automation/releases/tag/v0.7.0)에서 `HDev-Studio-0.7.0-win-x64.exe`를 받아 실행하세요. 설치가 필요 없는 Windows 64비트 앱입니다.
+[H.Dev Studio 0.7.1 다운로드](https://github.com/Hlxecz/blog-automation/releases/tag/v0.7.1)에서 `HDev-Studio-0.7.1-win-x64.exe`를 받아 실행하세요. 설치가 필요 없는 Windows 64비트 앱입니다.
 
-처음 실행하면 **작업실 → 자료 폴더 열기**에서 `tistory.config.json`의 `blogUrl`을 본인 블로그 주소로 바꾸고 앱을 다시 실행합니다. **도움말 · AI 연결**에서 Codex 또는 Claude Code를 선택하고 본인 계정으로 로그인하세요. [자세한 사용 안내](docs/USAGE.md)를 참고하세요.
+처음 실행하면 **내 블로그 설정**에 본인 티스토리 주소를 저장합니다. 앱 재시작 없이 반영됩니다. **도움말 · AI 연결**에서 Codex 또는 Claude Code를 선택하고 본인 계정으로 로그인하세요. [자세한 사용 안내](docs/USAGE.md)를 참고하세요.
 
 ## 주요 기능
 
@@ -75,6 +75,7 @@ npm test
 npm run test:desktop
 npm run test:categories
 npm run test:writing
+npm run test:setup
 npm run build:exe
 ```
 
