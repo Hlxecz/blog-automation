@@ -82,10 +82,24 @@ function openBlogSettings() {
   };
   modal(settings.blogConfigured ? '내 블로그 설정' : '먼저 내 블로그를 연결해 주세요', form); input.focus();
 }
+const connectedBlog = () => settings?.tistory?.blogs?.find(blog => blog.url === settings.blogUrl);
+function updateTistoryConnection() {
+  const blog = connectedBlog(), hasBlogs = !!settings?.tistory?.blogs?.length, button = $('manage-blog');
+  button.textContent = tistoryConnecting ? '로그인 확인 중…' : blog ? `${blog.title} ▾` : hasBlogs ? '내 블로그 선택 ▾' : '티스토리 로그인';
+  button.disabled = tistoryConnecting;
+  button.classList.toggle('primary', !hasBlogs);
+  button.classList.toggle('secondary', hasBlogs);
+  button.title = blog ? `${blog.title} · 연결됨 · 블로그 선택 및 로그인 설정` : button.textContent;
+  button.setAttribute('aria-label', button.title);
+  $('connected-blog-name').textContent = blog?.title || '내 블로그';
+  $('connected-blog-name').title = blog?.title || '';
+}
 function openTistoryConnection() {
+  const blog = connectedBlog();
   const box = document.createElement('div'); box.className = 'add-blog-form';
-  const help = document.createElement('p'); help.textContent = '티스토리에 로그인하면 이 계정에서 운영하는 블로그를 찾아 글과 카테고리를 불러옵니다.';
+  const help = document.createElement('p'); help.textContent = blog ? '연결할 블로그를 선택하거나 로그인 상태를 다시 확인할 수 있어요.' : '티스토리에 로그인하면 이 계정에서 운영하는 블로그를 찾아 글과 카테고리를 불러옵니다.';
   const status = document.createElement('p'); status.id = 'tistory-connect-status'; status.setAttribute('role', 'status');
+  status.textContent = blog ? `${blog.title} · 연결됨` : '';
   const login = document.createElement('button'); login.id = 'tistory-connect'; login.className = 'button primary';
   login.textContent = tistoryConnecting ? '티스토리 창에서 로그인해 주세요…' : '티스토리 로그인'; login.disabled = tistoryConnecting;
   login.onclick = () => connectTistory();
@@ -99,7 +113,7 @@ function openTistoryConnection() {
     use.disabled = tistoryConnecting; select.disabled = tistoryConnecting;
     use.onclick = async () => { use.disabled = true; try { await useAccountBlog(select.value); } catch (error) { status.textContent = error.message; } finally { use.disabled = false; } };
     box.append(label, select, use);
-    login.textContent = '다시 로그인 / 블로그 찾기';
+    login.textContent = '로그인 다시 확인';
   }
   modal('내 티스토리 연결', box);
 }
@@ -124,7 +138,7 @@ async function connectTistory() {
     if ($('tistory-connect-status')) $('tistory-connect-status').textContent = error.message;
   } finally {
     tistoryConnecting = false; updateControls();
-    if ($('tistory-connect')) { $('tistory-connect').disabled = false; $('tistory-connect').textContent = '티스토리 로그인'; }
+    if ($('tistory-connect')) { $('tistory-connect').disabled = false; $('tistory-connect').textContent = settings.tistory?.blogs?.length ? '로그인 다시 확인' : '티스토리 로그인'; }
   }
 }
 async function useAccountBlog(blogUrl) {
@@ -141,12 +155,13 @@ async function useAccountBlog(blogUrl) {
   if (postsLoaded) toast('로그인한 계정의 블로그를 연결하고 글과 카테고리를 불러왔어요.');
 }
 function updateBlogLinks() {
+  updateTistoryConnection();
   if (settings.blogConfigured) { $('blog-link').href = settings.blogUrl; $('blog-link').textContent = '내 블로그 열기 ↗'; }
   else { $('blog-link').removeAttribute('href'); $('blog-link').textContent = '내 블로그 설정'; }
 }
 $('blog-settings-nav').onclick = openBlogSettings;
 $('blog-link').onclick = event => { if (!settings?.blogConfigured) { event.preventDefault(); openBlogSettings(); } };
-$('manage-blog').onclick = () => connectTistory();
+$('manage-blog').onclick = () => settings?.tistory?.blogs?.length ? openTistoryConnection() : connectTistory();
 window.addEventListener('hdev:blog-settings', openBlogSettings);
 window.addEventListener('hdev:tistory-login', () => connectTistory());
 $('close-modal').onclick = () => $('modal').close();
@@ -513,6 +528,7 @@ async function uploadFiles(files) {
 }
 
 function updateControls() {
+  updateTistoryConnection();
   const running = busy(), hasImages = !!current?.images.length;
   $('draft-category').disabled = running || switching;
   $('writing-prompt-settings').disabled = running;
@@ -878,7 +894,7 @@ function renderLibrary() {
   if (settings?.blogConfigured) $('open-blog-management').href = `${settings.blogUrl}/manage/posts`;
   else $('open-blog-management').removeAttribute('href');
   $('open-blog-management').hidden = !settings?.blogConfigured;
-  $('manage-blog').disabled = tistoryConnecting;
+  updateTistoryConnection();
   $('add-blog').hidden = !!settings.tistory?.canConnect;
   $('library-updated').textContent = libraryLoading ? '공개 글을 불러오는 중…' : library?.syncedAt ? `${new Date(library.syncedAt).toLocaleString('ko-KR')} 불러옴` : '아직 불러오지 않았어요';
   $('sync-blog').disabled = libraryLoading; $('blog-select').disabled = libraryLoading; $('add-blog').disabled = libraryLoading;
