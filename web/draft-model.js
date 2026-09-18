@@ -23,6 +23,23 @@ export function normalizeCategory(value, blogUrl) {
   return { blogUrl: url.origin, id: value.id, path: names };
 }
 
+export function uncategorizedCategory(blogUrl) {
+  return normalizeCategory({ blogUrl: new URL(blogUrl).origin, id: '0', path: ['카테고리 없음'] }, blogUrl);
+}
+
+// Keep complete paths for publication, but only offer categories without children.
+export function selectableCategories(items, blogUrl) {
+  const origin = new URL(blogUrl).origin, own = items.filter(item => item.blogUrl === origin);
+  const parents = new Set(own.filter(item => item.path.length > 1).map(item => item.path[0]));
+  return [uncategorizedCategory(origin), ...own.filter(item => item.id !== '0' && (item.path.length > 1 || !parents.has(item.path[0])))];
+}
+
+export function categoryLabel(category, choices) {
+  const name = category.path.at(-1);
+  return choices.some(item => item.id !== category.id && item.path.at(-1) === name) && category.path.length > 1
+    ? `${name} (${category.path[0]})` : name;
+}
+
 // Tistory's editor labels child options with "- "; IDs distinguish equal names.
 export function categoriesFromEditor(options, blogUrl) {
   if (!Array.isArray(options) || !options.length || options.length > 1000) throw new Error('카테고리 목록을 읽지 못했습니다.');

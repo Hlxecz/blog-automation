@@ -68,9 +68,10 @@
         <div class="panel-heading draft-toolbar"><h2 id="draft-heading"><span data-icon="file"></span> 글 미리보기</h2><div class="draft-toolbar-actions"><button id="github-card" class="button secondary github-card-button" aria-pressed="false" disabled><span data-icon="github"></span> GitHub 카드</button><div class="view-switch" role="group" aria-label="글 보기 모드"><button id="edit-view" aria-pressed="false">편집</button><button id="preview-view" class="active" aria-pressed="true">미리보기</button></div></div></div>
         <div id="changed-banner" class="changed-banner" hidden>자료가 바뀌었어요. 기존 글은 보관되어 있으며, 다시 생성하면 새 자료를 반영합니다.</div>
         <section id="category-section" class="category-section" aria-label="발행 카테고리" hidden>
-          <label for="draft-category">발행 카테고리</label>
-          <div class="category-controls"><select id="draft-category" aria-describedby="category-status"><option value="">티스토리 기본값</option></select><button id="category-refresh" class="button secondary">카테고리 불러오기</button></div>
+          <label for="draft-category">글쓰기 · 발행 카테고리</label>
+          <div class="category-controls"><select id="draft-category" aria-describedby="category-status"><option value="0">카테고리 없음</option></select><button id="category-refresh" class="button secondary">카테고리 불러오기</button></div>
           <p id="category-status" role="status">티스토리의 카테고리를 불러와 이 글을 넣을 곳을 선택하세요.</p>
+          <div class="writing-selection"><p id="writing-prompt-summary" role="status">기본 블로그용 프롬프트로 작성해요.</p><button id="writing-prompt-settings" class="text-button">글쓰기 프롬프트 설정</button></div>
         </section>
         <section id="cover-section" class="cover-section" aria-label="글 표지" hidden>
           <div id="cover-preview" class="cover-preview"></div>
@@ -114,7 +115,28 @@
 
   <section id="style-page" class="style-page" aria-labelledby="style-heading" hidden>
     <div class="style-content">
-      <header class="style-heading"><div><p class="workspace-kicker"><span class="small-dot"></span> 글쓰기 설정</p><h1 id="style-heading">내 글에 어울리는 말투.</h1><p>좋아하는 블로그를 참고하고, 나에게 맞게 다듬어 보세요.</p></div><button id="style-back" class="button secondary">작업실로 돌아가기</button></header>
+      <header class="style-heading"><div><p class="workspace-kicker"><span class="small-dot"></span> 글쓰기 설정</p><h1 id="style-heading">글의 종류에 맞는 말투와 구성.</h1><p>기본 블로그용 프롬프트를 유지하고, 카테고리마다 필요한 지침을 따로 저장하세요.</p></div><button id="style-back" class="button secondary">작업실로 돌아가기</button></header>
+      <section class="category-writing-panel" aria-labelledby="category-writing-heading">
+        <div class="panel-heading"><h2 id="category-writing-heading">카테고리별 프롬프트</h2><span id="category-prompt-state" class="counter" role="status">불러오는 중</span></div>
+        <p class="style-help">뉴스는 핵심 소식 위주로, 회고는 선택과 배운 점 위주로. 말투·글의 순서·분량을 직접 정해 보세요. 저장한 지침은 다음 초안 생성부터 적용돼요.</p>
+        <div class="category-writing-layout">
+          <div class="category-writing-options">
+            <label for="prompt-category">설정할 카테고리</label><select id="prompt-category"></select>
+            <button id="prompt-category-refresh" class="text-button">카테고리 불러오기</button>
+            <p id="prompt-category-help" class="style-help" role="status"></p>
+            <label for="prompt-example">시작할 때 참고할 예시</label><select id="prompt-example"></select>
+            <button id="apply-prompt-example" class="button secondary">예시 가져오기</button>
+            <p class="style-help">예시를 가져온 뒤 원하는 말투로 수정하고 저장하세요. 예시 가져오기는 편집칸의 내용을 바꿉니다.</p>
+          </div>
+          <div class="category-writing-editor">
+            <label for="category-prompt">이 카테고리의 글쓰기 지침</label>
+            <textarea id="category-prompt" maxlength="10000" spellcheck="false" placeholder="예: AI 뉴스는 담백한 존댓말로 써줘. 핵심 소식, 바뀐 점, 개발자에게 주는 영향 순서로 구성하고 개인 회고는 넣지 마."></textarea>
+            <p class="style-help">비워서 저장하면 기본 블로그용 프롬프트를 사용합니다. 다른 카테고리와 기존 초안의 본문은 바뀌지 않아요.</p>
+            <div class="category-writing-footer"><span id="category-prompt-count">0 / 10,000자</span><button id="clear-category-prompt" class="text-button">기본 블로그용 사용</button><button id="save-category-prompt" class="button primary">카테고리 지침 저장</button></div>
+            <div class="category-writing-recovery"><button id="reload-category-prompt" class="text-button" hidden>최신 저장본 불러오기</button><button id="undo-category-prompt" class="text-button" hidden>편집 내용 되돌리기</button></div>
+          </div>
+        </div>
+      </section>
       <div class="style-layout">
         <section class="style-sources" aria-labelledby="style-sources-heading">
           <div class="panel-heading"><h2 id="style-sources-heading">참고할 블로그</h2><span class="counter">최대 3개</span></div>
@@ -131,8 +153,8 @@
           <details id="style-evidence" hidden><summary>분석에 참고한 글</summary><ul id="style-source-list"></ul></details>
         </section>
         <section class="style-editor-panel" aria-labelledby="style-editor-heading">
-          <div class="panel-heading"><h2 id="style-editor-heading"><span data-icon="feather"></span> 나의 글쓰기 지침</h2><span id="style-save-state" class="counter" role="status">불러오는 중</span></div>
-          <p class="style-help">어미, 문장 길이, 도입과 마무리 방식을 자유롭게 적어주세요. 저장한 지침은 다음 초안 생성부터 적용돼요.</p>
+          <div class="panel-heading"><h2 id="style-editor-heading"><span data-icon="feather"></span> 기본 블로그용 프롬프트</h2><span id="style-save-state" class="counter" role="status">불러오는 중</span></div>
+          <p class="style-help">기존에 사용하던 지침입니다. 별도 지침이 없는 카테고리에 그대로 적용돼요. 카테고리 지침이 있으면 말투와 구성은 해당 지침을 우선합니다.</p>
           <label class="sr-only" for="style-profile">말투 지침</label><textarea id="style-profile" maxlength="20000" spellcheck="false" placeholder="예: 편한 존댓말을 사용해요. 한 문장은 짧게 쓰고, 시도한 과정과 결과를 차근차근 설명해요."></textarea>
           <div class="style-editor-footer"><span id="style-character-count">0 / 20,000자</span><button id="reload-style" class="text-button" hidden>최신 저장본 불러오기</button><button id="save-style" class="button primary"><span data-icon="save"></span> 말투 저장</button></div>
           <section id="style-result" class="style-result" hidden><h3>블로그에서 분석한 말투</h3><p class="style-help">결과를 읽고 지침에 가져온 뒤, 원하는 표현으로 수정해 보세요.</p><pre id="style-result-text"></pre><button id="apply-style-result" class="button secondary">이 결과로 지침 바꾸기</button><button id="undo-style-result" class="text-button" hidden>가져오기 전으로 되돌리기</button></section>

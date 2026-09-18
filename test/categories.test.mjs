@@ -3,13 +3,26 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { categoriesFromEditor, normalizeCategory } from '../web/draft-model.js';
+import { categoriesFromEditor, normalizeCategory, selectableCategories, categoryLabel } from '../web/draft-model.js';
 import { createCategories } from '../scripts/categories.mjs';
 import { verifyPublishedHtml } from '../scripts/publication.mjs';
 
 const blogUrl = 'https://example.tistory.com';
 const raw = [{ id:'0',label:'카테고리 없음' },{ id:'10',label:'Language' },{ id:'11',label:'- Java' },{ id:'20',label:'Study' },{ id:'21',label:'- Java' }];
 const items = categoriesFromEditor(raw, blogUrl);
+test('category choices unify uncategorized, omit parents, and distinguish duplicate leaf names', () => {
+  const standalone = { blogUrl, id:'30', path:['회고'] };
+  const source = [...items, standalone, {...standalone,blogUrl:'https://other.tistory.com',id:'40'}];
+  const before = structuredClone(source), choices = selectableCategories(source, blogUrl);
+  assert.deepEqual(choices.map(item => item.id), ['0','11','21','30']);
+  assert.deepEqual(choices.map(item => categoryLabel(item, choices)), ['카테고리 없음','Java (Language)','Java (Study)','회고']);
+  assert.deepEqual(choices[1].path, ['Language','Java']);
+  assert.deepEqual(selectableCategories([], blogUrl), [items[0]]);
+  assert.deepEqual(selectableCategories([items[0],items[0]], blogUrl), [items[0]]);
+  assert.equal(categoryLabel(items[2], [items[0],items[2]]), 'Java');
+  assert.deepEqual(source, before);
+});
+
 test('editor category IDs preserve parent paths and reject incomplete or malformed lists', () => {
   assert.deepEqual(items[2], { blogUrl, id:'11',path:['Language','Java'] });
   assert.deepEqual(items[4].path, ['Study','Java']);

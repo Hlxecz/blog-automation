@@ -10,6 +10,41 @@ import { articleBlocks } from '../web/draft-model.js';
 const PNG = fs.readFileSync(new URL('./fixtures/redis-test.png', import.meta.url));
 const draftFor = image => ({ title:'검증용 개발 기록', tags:['테스트'], blocks:[{ type:'paragraph', text:'관찰한 내용을 정리합니다.' },{ type:'image',file:image,alt:'가상 테스트 캡처',caption:'앱 검증 자료' }] });
 
+test('category selection before the first draft uses frozen prompts and keeps the original default', async t => {
+  const category = { blogUrl:'https://example.tistory.com', id:'11', path:['AI','뉴스'] };
+  const received = []; let release, wait = true;
+  const gate = new Promise(resolve => { release = resolve; });
+  const { request, id, job, root } = await fixture(t, async input => {
+    received.push(input); if (wait) await gate;
+    return { draft:draftFor(job.images[0].name), analysis:'분석', review:'', sensitiveImages:[] };
+  });
+  const initial = (await request('/api/writing-prompts')).data;
+  assert.equal((await request('/api/writing-prompts','PUT',{category,prompt:'권한 없는 변경',revision:initial.revision},{'X-App-Token':'bad'})).status,403);
+  let saved = await request('/api/writing-prompts','PUT',{category,prompt:'뉴스 첫 지침',revision:initial.revision});
+  assert.equal(saved.status,200);
+  const input = { title:'AI 소식',notes:'발표 자료',order:job.images.map(item=>item.name),category };
+  const selected = await request(`/api/jobs/${id}`,'PUT',input);
+  assert.equal(selected.data.draft,null); assert.deepEqual(selected.data.category,category);
+  assert.equal((await request(`/api/jobs/${id}`,'PUT',{...input,category:{...category,blogUrl:'https://other.tistory.com'}})).status,400);
+  assert.deepEqual((await request(`/api/jobs/${id}`)).data.category,category);
+  const start = await request(`/api/jobs/${id}/generate`,'POST'); assert.equal(start.status,202);
+  saved = await request('/api/writing-prompts','PUT',{category,prompt:'뉴스 새 지침',revision:saved.data.revision});
+  fs.writeFileSync(path.join(root,'style.md'),'바뀐 기본 지침');
+  wait=false; release();
+  const first = await settled(request,id);
+  assert.equal(first.generation.phase,'done'); assert.deepEqual(first.draft.category,category);
+  assert.equal(received[0].style,'테스트 문체'); assert.equal(received[0].writing.prompt,'뉴스 첫 지침');
+  assert.equal(first.writingContext.prompt,'뉴스 첫 지침'); assert.equal(first.writingContext.style,'테스트 문체');
+  await request(`/api/jobs/${id}/generate`,'POST'); const second = await settled(request,id);
+  assert.equal(received[1].writing.prompt,'뉴스 새 지침'); assert.equal(received[1].style,'바뀐 기본 지침');
+  assert.deepEqual(second.category,category);
+  const noCategory = structuredClone(second.draft); delete noCategory.category;
+  await request(`/api/jobs/${id}/draft`,'PUT',{draft:noCategory,review:''});
+  await request(`/api/jobs/${id}/generate`,'POST'); await settled(request,id);
+  assert.deepEqual(received[2].writing,{category:{blogUrl:category.blogUrl,id:'0',path:['카테고리 없음']},prompt:''});
+  assert.equal((await request('/api/style')).data.profile,'바뀐 기본 지침');
+});
+
 test('category API locks reads, preserves selection on regeneration, rejects other blogs, and retains the default choice', async t => {
   const category={blogUrl:'https://example.tistory.com',id:'11',path:['Language','Java']};
   const items=[{blogUrl:category.blogUrl,id:'0',path:['카테고리 없음']},category];
@@ -37,7 +72,7 @@ test('category API locks reads, preserves selection on regeneration, rejects oth
   assert.deepEqual((await request(`/api/jobs/${id}`)).data.draft,saved);
   await request(`/api/jobs/${id}/generate`,'POST');assert.deepEqual((await settled(request,id)).draft.category,category);
   delete draft.category;await request(route,'PUT',{draft,review:''});
-  await request(`/api/jobs/${id}/generate`,'POST');assert.equal((await settled(request,id)).draft.category,undefined);
+  await request(`/api/jobs/${id}/generate`,'POST');assert.deepEqual((await settled(request,id)).draft.category,items[0]);
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(root,'library/categories.json'))).items,items);
 });
 

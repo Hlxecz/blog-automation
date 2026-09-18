@@ -1,6 +1,7 @@
-import { articleBlocks } from './draft-model.js';
+import { articleBlocks, uncategorizedCategory, selectableCategories, categoryLabel } from './draft-model.js';
 import { renderArticleContent, renderGitHubCard, normalizeGitHubCard } from './article-renderer.js';
 import { initStyleSettings } from './style-settings.js';
+import { initCategoryPrompts } from './category-prompts.js';
 import { createAIHelp, connectionMessage } from './ai-help.js';
 
 const $ = id => document.getElementById(id);
@@ -23,6 +24,8 @@ const icons = {
 document.querySelectorAll('[data-icon]').forEach(el => { el.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[el.dataset.icon] || ''}</svg>`; });
 
 let token, settings, jobs = [], current = null, draft = null, mode = 'preview';
+let selectedCategory = null, creatingJob;
+const currentCategory = () => selectedCategory || uncategorizedCategory(settings.blogUrl);
 let references = [];
 let referenceTimer, referenceStarting = false;
 let draftDirty = false, materialDirty = false, materialVersion = 0, saveTimer, pollTimer, toastTimer;
@@ -60,26 +63,40 @@ function markDraft() { draftDirty = true; saveStatus('수정한 글 · 보관 �
 
 function renderCategories() {
   const state = settings?.categories, select = $('draft-category');
-  $('category-section').hidden = !draft;
-  select.replaceChildren(new Option('티스토리 기본값', ''));
-  for (const item of state?.items || []) select.add(new Option(item.path.join(' / '), item.id));
-  if (draft?.category) {
-    const found = state?.items?.find(item => JSON.stringify(item) === JSON.stringify(draft.category));
-    if (!found) select.add(new Option(`저장된 선택: ${draft.category.path.join(' / ')}`, 'saved'));
+  $('category-section').hidden = false;
+  if (!settings) return;
+  const choices = selectableCategories(state?.items || [], settings.blogUrl), category = currentCategory();
+  select.replaceChildren();
+  for (const item of choices) select.add(new Option(categoryLabel(item, choices), item.id));
+  select.value = '0';
+  if (selectedCategory) {
+    const found = choices.find(item => JSON.stringify(item) === JSON.stringify(selectedCategory));
+    if (!found) {
+      const previous = new Option(`기존 선택: ${selectedCategory.path.join(' / ')} · 다시 선택해 주세요`, 'saved');
+      previous.disabled = true; select.add(previous);
+    }
     select.value = found ? found.id : 'saved';
   }
   $('category-status').classList.remove('error');
   $('category-status').textContent = state?.busy || categoryLoading ? '티스토리 창에서 목록을 읽고 있어요. 로그인 화면이 나오면 로그인해 주세요.'
     : !state?.canRead ? '카테고리 목록을 새로 불러오려면 데스크톱 앱을 사용하세요.'
     : select.value === 'saved' ? '저장된 선택을 확인하려면 목록을 불러와 다시 선택해 주세요.'
-    : state?.updatedAt ? '선택한 카테고리는 초안과 함께 보관되며 발행할 때 적용돼요.'
+    : state?.updatedAt ? '초안을 만들기 전에 선택하세요. 이 분류의 글쓰기 지침으로 작성하고 발행할 때도 적용해요.'
     : '카테고리를 불러오면 하위 카테고리까지 선택할 수 있어요.';
+  const prompt = settings?.writingPrompts?.profiles.find(item => JSON.stringify(item.category) === JSON.stringify(category))?.prompt;
+  $('writing-prompt-summary').textContent = prompt ? `적용할 지침: ${categoryLabel(category, choices)} · ${prompt.split('\n')[0].slice(0,90)}` : '기본 블로그용 프롬프트로 작성해요.';
+  if (draft) $('writing-prompt-summary').textContent += ' 지침 변경은 초안을 다시 만들 때 반영돼요.';
 }
 $('draft-category').onchange = () => {
-  if (!draft || busy() || $('draft-category').value === 'saved') return;
-  const category = settings?.categories?.items.find(item => item.id === $('draft-category').value);
-  if (category) draft.category = structuredClone(category); else delete draft.category;
-  markDraft(); renderCategories(); updateControls();
+  if (busy() || switching || $('draft-category').value === 'saved') return;
+  const category = selectableCategories(settings?.categories?.items || [], settings.blogUrl).find(item => item.id === $('draft-category').value);
+  if (!category) return;
+  selectedCategory = structuredClone(category);
+  if (draft) {
+    draft.category = structuredClone(category);
+    markDraft();
+  } else markMaterial();
+  renderCategories(); updateControls();
 };
 async function pollCategories() {
   clearTimeout(categoryPollTimer);
@@ -87,7 +104,7 @@ async function pollCategories() {
   catch (error) { toast(error.message, true); }
   if (settings?.categories?.busy) categoryPollTimer = setTimeout(pollCategories, 1500);
 }
-$('category-refresh').onclick = async () => {
+async function refreshCategories() {
   if (busy() || switching) return;
   try {
     await saveAll(); categoryLoading = true; renderCategories(); updateControls();
@@ -97,13 +114,15 @@ $('category-refresh').onclick = async () => {
   } catch (error) {
     categoryLoading = false;
     $('category-status').classList.add('error'); $('category-status').textContent = error.message;
-    toast(error.message, true);
+    throw error;
   } finally { categoryLoading = false; updateControls(); }
-};
+}
+$('category-refresh').onclick = () => refreshCategories().catch(error => toast(error.message, true));
 
 async function ensureJob() {
   if (!current) {
-    current = await api('/api/jobs', { method:'POST', json:{ title:$('topic').value } });
+    creatingJob ||= api('/api/jobs', { method:'POST', json:{ title:$('topic').value } });
+    try { current = await creatingJob; } finally { creatingJob = null; }
     localStorage.setItem('hdev.current', current.id);
   }
   return current;
@@ -113,7 +132,7 @@ async function saveMaterial(allowPublicationSave = false) {
   if (!materialDirty || busy(allowPublicationSave)) return saveQueue;
   await ensureJob();
   const id = current.id, version = materialVersion;
-  const body = { title:$('topic').value, notes:$('notes').value, order:current.images.map(i => i.name), references:structuredClone(references) };
+  const body = { title:$('topic').value, notes:$('notes').value, order:current.images.map(i => i.name), references:structuredClone(references), category: structuredClone(currentCategory()) };
   const task = saveQueue.catch(() => {}).then(() => api(`/api/jobs/${id}`, { method:'PUT', json:body }));
   saveQueue = task;
   const saved = await task;
@@ -221,6 +240,7 @@ async function selectJob(id) {
   try {
     await saveAll(); clearTimeout(pollTimer); clearTimeout(referenceTimer);
     current = await api(`/api/jobs/${id}`); draft = current.draft ? structuredClone(current.draft) : null;
+    selectedCategory = structuredClone(current.category || null);
     references = structuredClone(current.references || []); resetReferenceForm(); renderReferences();
     draftDirty = false; materialDirty = false; localStorage.setItem('hdev.current', id);
     $('topic').value = current.title;
@@ -244,6 +264,7 @@ function clearWorkspace() {
   clearTimeout(saveTimer); clearTimeout(pollTimer); clearTimeout(publishTimer);
   clearTimeout(referenceTimer);
   current = null; draft = null; draftDirty = false; materialDirty = false;
+  selectedCategory = null;
   references = []; resetReferenceForm(); renderReferences();
   $('topic').value = ''; $('notes').value = ''; $('review-notes').value = ''; $('analysis-text').textContent = '';
   $('breadcrumb-title').textContent = '새로운 개발 기록'; localStorage.removeItem('hdev.current');
@@ -313,10 +334,14 @@ $('delete-current').onclick = async () => {
   catch(e) { toast(e.message,true); }
 };
 const styleSettings = initStyleSettings({ api, toast, onSaved: profile => { settings.style = profile; } });
+const categoryPrompts = initCategoryPrompts({ api, toast, getCategories: () => settings?.categories, refreshCategories, isBusy: busy,
+  onSaved: state => { settings.writingPrompts = state; renderCategories(); } });
 async function showStyle() {
   try {
     await saveAll();
     await styleSettings.open();
+    settings.categories = await api('/api/categories');
+    await categoryPrompts.open(currentCategory());
     document.querySelector('main').hidden = true; $('library-page').hidden = true; $('style-page').hidden = false;
     $('style-profile').scrollTop = 0;
     $('studio-nav').classList.remove('selected'); $('library-nav').classList.remove('selected'); $('style-nav').classList.add('selected');
@@ -324,6 +349,7 @@ async function showStyle() {
   } catch (e) { toast(e.message, true); }
 }
 $('style-nav').onclick = showStyle; $('style-summary').onclick = showStyle;
+$('writing-prompt-settings').onclick = showStyle;
 $('style-back').onclick = () => showWorkspace();
 
 function setSidebar(collapsed) {
@@ -392,7 +418,8 @@ async function uploadFiles(files) {
 
 function updateControls() {
   const running = busy(), hasImages = !!current?.images.length;
-  $('draft-category').disabled = running || !draft;
+  $('draft-category').disabled = running || switching;
+  $('writing-prompt-settings').disabled = running;
   $('category-refresh').disabled = running || !settings?.categories?.canRead;
   $('category-refresh').textContent = categoryLoading || settings?.categories?.busy ? '불러오는 중…' : settings?.categories?.updatedAt ? '목록 새로고침' : '카테고리 불러오기';
   const reading = referenceStarting || current?.referenceRead?.phase === 'reading';
@@ -688,7 +715,7 @@ $('draft-tags').oninput=()=>{draft.tags=$('draft-tags').value.split(',').map(t=>
 $('review-notes').oninput=markDraft;
 $('edit-view').onclick=()=>{mode='edit';renderDraft();}; $('preview-view').onclick=()=>{mode='preview';renderDraft();};
 $('manual-start').onclick=async()=>{
-  try{await saveMaterial();draft={title:$('topic').value||'새로운 개발 기록',tags:[],blocks:[{type:'paragraph',text:'이곳에 개발 기록을 적어주세요.'},...current.images.map(i=>({type:'image',file:i.name,alt:i.label,caption:''}))]};draftDirty=true;await saveAll();mode='edit';renderDraft();}catch(e){toast(e.message,true);}
+  try{await saveMaterial();draft={title:$('topic').value||'새로운 개발 기록',tags:[],category:structuredClone(currentCategory()),blocks:[{type:'paragraph',text:'이곳에 개발 기록을 적어주세요.'},...current.images.map(i=>({type:'image',file:i.name,alt:i.label,caption:''}))]};draftDirty=true;await saveAll();mode='edit';renderDraft();}catch(e){toast(e.message,true);}
 };
 $('add-block').onclick=()=>{if(draft)insertBlock($('block-type').value,draft.blocks.length);};
 $('generate').onclick=async()=>{
@@ -710,6 +737,7 @@ function pollGeneration(id){
 }
 $('transfer').onclick=async()=>{
   if(busy() || !draft || !settings?.canPublish)return;
+  if (!draft.category) { draft.category = structuredClone(currentCategory()); markDraft(); }
   publishStarting=true;updateControls();
   try{
     await saveAll(true);
@@ -729,7 +757,7 @@ function pollPublication(id){
     }catch(e){toast(e.message,true);pollPublication(id);}
   },1800);
 }
-window.addEventListener('beforeunload',e=>{if(draftDirty||materialDirty||styleSettings.isDirty()){e.preventDefault();e.returnValue='';}});
+window.addEventListener('beforeunload',e=>{if(draftDirty||materialDirty||styleSettings.isDirty()||categoryPrompts.isDirty()){e.preventDefault();e.returnValue='';}});
 
 async function boot(){
   try{
