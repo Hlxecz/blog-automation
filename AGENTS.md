@@ -44,7 +44,9 @@
 
 ## 구현 안내
 
-발행 카테고리는 선택적인 `draft.category`의 `{blogUrl,id,path}`로 보관합니다. `path`는 상위·하위 이름 배열이며 AI 재생성 시 사용자의 선택을 유지합니다. `scripts/categories.mjs`는 블로그별 목록을 로컬 `library/categories.json`에 보관하고, 데스크톱의 `createTistoryCategoryReader`가 로그인한 새 글 편집 화면의 목록만 읽습니다. 2026-09-16 실제 화면에서 `category-btn`, `category-list`, `category-item-<ID>`, `category-id`, `aria-label`을 확인했습니다. 옵션의 `aria-selected`는 키보드 초점이므로 선택 확인에 사용하지 않습니다. 번호와 전체 경로를 대조해 클릭한 뒤 버튼 표시를 확인하며, 삭제·변경된 분류에 임의로 대체 발행하지 않습니다. 공개 글의 `a.category` 경로까지 맞아야 카테고리 검증을 기록합니다. 명시적인 카테고리 없음은 ID `0`이며, 필드 자체가 없으면 기존 편집기 기본값을 유지합니다.
+기존 말투 프로필은 **기본 블로그용 프롬프트**로 유지합니다. 카테고리별 지침은 `scripts/writing-prompts.mjs`가 로컬 `style/category-prompts.json`에 별도로 보관하며 Git과 EXE에서 제외합니다. AI 뉴스·인사이트·프로젝트 회고·트러블슈팅·개발 개념 및 사용법 예시는 사용자가 가져와 저장한 경우에만 적용합니다. 블로그·카테고리 ID·전체 경로가 일치하는 지침만 사용하고, 별도 지침이 없으면 기존 기본 프롬프트를 그대로 사용합니다. 초안이 없을 때 선택한 카테고리는 글의 `app.json`에 보관하며, 초안 생성 이후는 `draft.category`가 기준입니다. 생성 시작 시 공통 지침과 카테고리 지침을 고정하고 성공한 초안 옆 `writing-context.json`에 기록합니다. 카테고리 지침은 문체·구성에 우선하며 사실 확인·민감정보 보호·JSON 형식 규칙은 유지합니다. `npm run test:writing`은 모의 AI와 임시 자료로 이 연결과 기본 지침 보존을 검증합니다.
+
+발행 카테고리는 선택적인 `draft.category`의 `{blogUrl,id,path}`로 보관합니다. `path`는 상위·하위 이름 배열이며 AI 재생성 시 사용자의 선택을 유지합니다. `scripts/categories.mjs`는 블로그별 목록을 로컬 `library/categories.json`에 보관하고, 데스크톱의 `createTistoryCategoryReader`가 로그인한 새 글 편집 화면의 목록만 읽습니다. 2026-09-16 실제 화면에서 `category-btn`, `category-list`, `category-item-<ID>`, `category-id`, `aria-label`을 확인했습니다. 옵션의 `aria-selected`는 키보드 초점이므로 선택 확인에 사용하지 않습니다. 번호와 전체 경로를 대조해 클릭한 뒤 버튼 표시를 확인하며, 삭제·변경된 분류에 임의로 대체 발행하지 않습니다. 공개 글의 `a.category` 경로까지 맞아야 카테고리 검증을 기록합니다. 2026-09-18 요청에 따라 앱 기본 선택은 **카테고리 없음**(ID `0`)으로 통합하며, 생성·수동 작성 및 앱의 발행 버튼에서 명시적으로 보관합니다. 작업실과 프롬프트 설정의 선택 목록은 `web/draft-model.js`의 `selectableCategories`로 하위 분류가 있는 상위 항목을 생략하고, 같은 이름이 겹칠 때만 상위 이름을 붙입니다. 캐시와 발행 검증에는 전체 경로를 유지하고 기존 상위 분류 선택·저장된 지침은 삭제하지 않습니다. 필드가 없는 예전 초안을 저수준 발행 API로 보내는 경우의 기존 편집기 기본값 동작은 유지합니다.
 
 GitHub 정보 카드는 선택적인 `draft.githubCard`에 아이콘·주제 분류·주제·링크 분류·주소·링크 이름·설명으로 보관합니다. `web/article-renderer.js`가 목차 다음, 본문·표지 전에 렌더링하며, 스킨 목차 모드에서는 본문 맨 앞에 둡니다. AI가 카드 내용을 생성하거나 재생성 시 덮어쓰지 않으며 사용자의 추가·수정·제거를 유지합니다. 발행 검증에는 카드 문구와 실제 링크 주소를 포함합니다.
 

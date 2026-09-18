@@ -24,7 +24,7 @@
 
 ## Windows 앱 다운로드
 
-[H.Dev Studio 0.6.0 다운로드](https://github.com/Hlxecz/blog-automation/releases/tag/v0.6.0)에서 `HDev-Studio-0.6.0-win-x64.exe`를 받아 실행하세요. 설치가 필요 없는 Windows 64비트 앱입니다.
+[H.Dev Studio 0.7.0 다운로드](https://github.com/Hlxecz/blog-automation/releases/tag/v0.7.0)에서 `HDev-Studio-0.7.0-win-x64.exe`를 받아 실행하세요. 설치가 필요 없는 Windows 64비트 앱입니다.
 
 처음 실행하면 **작업실 → 자료 폴더 열기**에서 `tistory.config.json`의 `blogUrl`을 본인 블로그 주소로 바꾸고 앱을 다시 실행합니다. **도움말 · AI 연결**에서 Codex 또는 Claude Code를 선택하고 본인 계정으로 로그인하세요. [자세한 사용 안내](docs/USAGE.md)를 참고하세요.
 
@@ -32,12 +32,13 @@
 
 - 사진 업로드, 순서 변경, 작업 메모
 - Codex / Claude Code CLI 선택, 설치·로그인 도움말, 이미지 분석과 초안 생성
+- 기본 블로그용 프롬프트 보존, 카테고리별 글쓰기 지침과 편집 가능한 5가지 예시
 - 제목·본문·태그 편집과 미리보기
 - 편집 항목 드래그 이동과 항목 사이에 문단·사진·코드·표 추가
 - 참고자료 링크 최대 5개, 공개 노션 본문 읽기와 직접 붙여 넣기
 - 자동 목차, 팁·주의 상자, 목차 아래 GitHub 정보 카드
 - 기존 사진에서 표지 선택 또는 별도 표지 업로드
-- 티스토리 상위·하위 카테고리 불러오기, 글별 선택 보관과 해당 분류로 발행
+- 티스토리 카테고리 불러오기, 하위 분류 중심의 선택 목록, 글별 선택 보관과 해당 분류로 발행
 - 로컬 초안 보관, 용량 확인, 글 단위 삭제
 - 여러 티스토리 블로그의 공개 글 목록과 로그인된 글 관리 화면
 - 검토 후 **티스토리에 발행** 버튼으로 사진 업로드부터 공개 게시까지 실행
@@ -72,6 +73,8 @@ npm run desktop    # Electron 앱: 티스토리 발행 지원
 npm run release:check
 npm test
 npm run test:desktop
+npm run test:categories
+npm run test:writing
 npm run build:exe
 ```
 

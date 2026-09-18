@@ -9,6 +9,7 @@ import { checkAI, providers } from './ai.mjs';
 import { createLibrary } from './tistory.mjs';
 import { createCategories } from './categories.mjs';
 import { createStyles } from './style.mjs';
+import { createWritingPrompts } from './writing-prompts.mjs';
 import { normalizeReferences, readReferences, collectReferences, referenceReview } from './references.mjs';
 import { createPublications, draftDigest } from './publication.mjs';
 import { jobStorage, deleteJobStorage } from './storage.mjs';
@@ -28,6 +29,7 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
   const library = createLibrary(root, c.blogUrl, fetchPublic);
   const categories = createCategories({ root, blogUrl: c.blogUrl, reader: categoryReader });
   const styles = createStyles({ root, profileFile: path.resolve(root, c.styleProfile), analyzer: styleAnalyzer, fetchPage: fetchStyle });
+  const writingPrompts = createWritingPrompts({ root, blogUrl: c.blogUrl });
   const publications = createPublications({ adapter: publishAdapter, blogUrl: c.blogUrl, tocMode: c.tocMode });
   const inbox = path.resolve(root, c.inbox), output = path.resolve(root, c.output);
   const token = randomBytes(32).toString('hex');
@@ -86,6 +88,8 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
     return { id, title: meta.title || '', notes: fs.readFileSync(path.join(dir, 'notes.md'), 'utf8'), references, referenceReports, referenceRead:referenceReadStates.get(id) || {phase:'idle'},
       updatedAt: meta.updatedAt, images: imageNames(dir).map(name => ({ name, label: meta.labels?.[name] || name, url: `/api/jobs/${id}/images/${encodeURIComponent(name)}` })),
       draft, draftImages: savedInput?.images.map(i => ({ name: i.name, url: `/api/jobs/${id}/draft-images/${encodeURIComponent(i.name)}` })) || [],
+      category: (draft ? draft.category : meta.category) || null,
+      writingContext: saved && exists(path.join(saved, 'writing-context.json')) ? json(path.join(saved, 'writing-context.json')) : null,
       coverImages: [...new Set([...(meta.coverUploads || []), ...(savedInput?.coverImages || []).map(i => i.name)])].map(name => ({ name, label:meta.labels?.[name] || '표지 사진', url:`/api/jobs/${id}/${savedInput?.coverImages?.some(i=>i.name===name) ? 'draft-images' : 'images'}/${encodeURIComponent(name)}` })),
       review: saved && exists(path.join(saved, 'review.md')) ? fs.readFileSync(path.join(saved, 'review.md'), 'utf8') : '',
       analysis: saved && exists(path.join(saved, 'analysis.md')) ? fs.readFileSync(path.join(saved, 'analysis.md'), 'utf8') : '',
@@ -99,7 +103,7 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
     saveMeta(jobDir(id), { directory: prepared.directory });
     return prepared.directory;
   }
-  function persistDraft(id, directory, draft, review = '', analysis = '', referenceReports) {
+  function persistDraft(id, directory, draft, review = '', analysis = '', referenceReports, writingContext) {
     if (draft?.category != null) {
       try { draft.category = normalizeCategory(draft.category, c.blogUrl); }
       catch (error) { fail(false, error.message); }
@@ -136,13 +140,15 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
       const version = `${Date.now()}-${randomUUID().slice(0,8)}`;
       fs.copyFileSync(file, path.join(directory, 'history', `draft-${version}.json`));
       if (exists(path.join(directory, 'references-read.json'))) fs.copyFileSync(path.join(directory, 'references-read.json'), path.join(directory, 'history', `references-${version}.json`));
+      if (exists(path.join(directory, 'writing-context.json'))) fs.copyFileSync(path.join(directory, 'writing-context.json'), path.join(directory, 'history', `writing-context-${version}.json`));
     }
     write(file, draft);
     if (referenceReports) write(path.join(directory, 'references-read.json'), referenceReports);
+    if (writingContext) write(path.join(directory, 'writing-context.json'), writingContext);
     fs.writeFileSync(path.join(directory, 'review.md'), review);
     if (analysis) fs.writeFileSync(path.join(directory, 'analysis.md'), analysis);
     renderDraft(directory);
-    saveMeta(jobDir(id), { directory, generating: false, transfer: null });
+    saveMeta(jobDir(id), { directory, generating: false, transfer: null, category: draft.category || null });
   }
   async function readBody(req, max = 2 * 1024 * 1024) {
     let size = 0; const chunks = [];
@@ -174,6 +180,8 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
       if (req.headers.origin) fail(req.headers.origin === url.origin, '허용되지 않은 요청입니다.', 403);
       if (!['GET', 'HEAD'].includes(req.method)) fail(req.headers['x-app-token'] === token, '앱을 새로고침한 뒤 다시 시도해 주세요.', 403);
       const route = url.pathname;
+      if (route === '/api/writing-prompts' && req.method === 'GET') return sendJson(res, writingPrompts.state());
+      if (route === '/api/writing-prompts' && req.method === 'PUT') return sendJson(res, writingPrompts.save(await bodyJson(req)));
       if (route === '/api/categories' && req.method === 'GET') return sendJson(res, categories.state());
       if (route === '/api/categories' && req.method === 'POST') {
         fail(active.size === 0 && !styles.isRunning() && !checkingAI, '진행 중인 작업이 끝난 뒤 카테고리를 불러와 주세요.', 409);
@@ -211,7 +219,7 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
       if (remote && req.method === 'GET' && !remote[2]) return sendJson(res, library.read(remote[1]));
       if (remote && req.method === 'POST' && remote[2] === 'sync') return sendJson(res, await library.sync(remote[1]));
       if (route === '/api/bootstrap' && req.method === 'GET') { await connectionCheck; return sendJson(res, {
-        token, blogUrl: c.blogUrl, connected: ai.connected, ai, canPublish: !!publishAdapter, categories: categories.state(),
+        token, blogUrl: c.blogUrl, connected: ai.connected, ai, canPublish: !!publishAdapter, categories: categories.state(), writingPrompts: writingPrompts.state(),
         style: exists(path.resolve(root, c.styleProfile)) ? fs.readFileSync(path.resolve(root, c.styleProfile), 'utf8') : ''
       }); }
       if (route === '/api/jobs' && req.method === 'GET') {
@@ -254,9 +262,14 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
           const allNames = fs.readdirSync(path.join(dir, 'images'));
           fail(Array.isArray(b.order) && b.order.length <= 20 && new Set(b.order).size === b.order.length && b.order.every(n => allNames.includes(n) && path.basename(n) === n), '사진 목록이 올바르지 않습니다.');
           const references = b.references === undefined ? readReferences(dir) : normalizeReferences(b.references);
+          let category;
+          if (b.category !== undefined) {
+            try { category = b.category === null ? null : normalizeCategory(b.category, c.blogUrl); }
+            catch (error) { fail(false, error.message); }
+          }
           fs.writeFileSync(path.join(dir, 'notes.md'), b.notes); write(path.join(dir, 'order.json'), b.order);
           write(path.join(dir, 'references.json'), references);
-          saveMeta(dir, { title: b.title });
+          saveMeta(dir, { title: b.title, ...(category !== undefined ? { category } : {}) });
           return sendJson(res, readJob(id));
         }
         if (['images','covers'].includes(action) && req.method === 'POST') {
@@ -302,9 +315,11 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
           fail(imageNames(dir).length > 0, '먼저 개발 캡처를 올려 주세요.');
           const meta = metaFor(dir), previousDirectory = meta.directory || null;
           const previousDraft = previousDirectory && exists(path.join(previousDirectory,'draft.json')) ? json(path.join(previousDirectory,'draft.json')) : null;
-          const directory = prepare(id);
           const styleFile = path.resolve(root, c.styleProfile);
           fail(exists(styleFile), '말투 참고 자료가 없습니다. 설정에서 기존 글의 말투를 먼저 준비해 주세요.');
+          const writing = writingPrompts.resolve(previousDraft ? previousDraft.category : meta.category);
+          const writingContext = { ...writing, style: fs.readFileSync(styleFile, 'utf8'), selectedAt: new Date().toISOString() };
+          const directory = prepare(id);
           active.add(id); saveMeta(dir, { generating: true, directory: previousDirectory });
           generationStates.set(id, { phase: 'generating', message: '캡처를 분석할 준비를 하고 있어요.' });
           sendJson(res, readJob(id), 202);
@@ -312,7 +327,7 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
             const onProgress = message => generationStates.set(id, { phase: 'generating', message });
             const references = await collectReferences(readReferences(directory), fetchReference, onProgress, notionReader);
             const result = await generator({ provider, root, directory, title: meta.title, notes: fs.readFileSync(path.join(directory, 'notes.md'), 'utf8'),
-              references, style: fs.readFileSync(styleFile, 'utf8'), onProgress });
+              references, style: writingContext.style, writing: { category: writingContext.category, prompt: writingContext.prompt }, onProgress });
             return { result, references };
           })
             .then(({ result, references }) => {
@@ -322,7 +337,7 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
               result.draft.blocks = result.draft.blocks.filter(b => b.type !== 'image' || !blocked.has(b.file));
               // Cover selection belongs to the user, and survives regeneration.
               delete result.draft.category;
-              if (previousDraft?.category) result.draft.category = previousDraft.category;
+              if (writing.category) result.draft.category = writing.category;
               delete result.draft.cover;
               if (previousDraft?.cover && !blocked.has(previousDraft.cover)) result.draft.cover = previousDraft.cover;
               // The user owns the info card; AI regeneration cannot replace it.
@@ -330,7 +345,7 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
               if (previousDraft?.githubCard) result.draft.githubCard=structuredClone(previousDraft.githubCard);
               const labels = metaFor(dir).labels || {};
               const review = result.review + referenceReview(references) + (blocked.size ? '\n\n민감한 정보가 보일 수 있어 제외한 사진:\n' + [...blocked].map(name => labels[name] || name).join('\n') : '');
-              persistDraft(id, directory, result.draft, review, result.analysis, references);
+              persistDraft(id, directory, result.draft, review, result.analysis, references, writingContext);
               write(path.join(dir,'references-check.json'),{references:readReferences(directory),reports:references});
               generationStates.set(id, { phase: 'done', message: '초안을 만들었어요. 내용과 사진을 확인해 주세요.' });
             }).catch(e => { saveMeta(dir, { generating: false }); generationStates.set(id, { phase: 'error', message: e.message }); })
@@ -358,7 +373,7 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
         fail(false, '요청한 기능을 찾을 수 없습니다.', 404);
       }
       if (req.method === 'GET' && route === '/article.css') { res.writeHead(200, { 'Content-Type':'text/css; charset=utf-8' }); return res.end(articleCss); }
-      const staticFiles = { '/': 'index.html', '/app.js': 'app.js', '/ai-help.js': 'ai-help.js', '/style-settings.js': 'style-settings.js', '/draft-model.js':'draft-model.js', '/article-renderer.js':'article-renderer.js', '/styles.css': 'styles.css', '/favicon.svg': 'favicon.svg', '/favicon.png': 'favicon.png', '/logo.png': 'logo.png' };
+      const staticFiles = { '/': 'index.html', '/app.js': 'app.js', '/ai-help.js': 'ai-help.js', '/style-settings.js': 'style-settings.js', '/category-prompts.js': 'category-prompts.js', '/draft-model.js':'draft-model.js', '/article-renderer.js':'article-renderer.js', '/styles.css': 'styles.css', '/favicon.svg': 'favicon.svg', '/favicon.png': 'favicon.png', '/logo.png': 'logo.png' };
       if (req.method === 'GET' && Object.hasOwn(staticFiles, route)) return sendFile(res, path.join(webRoot, staticFiles[route]));
       fail(false, '페이지를 찾을 수 없습니다.', 404);
     } catch (error) {
