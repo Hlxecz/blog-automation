@@ -5,6 +5,7 @@ import { randomUUID, randomBytes, createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { newJob, readyJob, prepareJob, renderDraft, buildPreview, listJobs } from './blog.mjs';
 import { generate } from './generate.mjs';
+import { refineWriting, refinementSelection, applyRefinement } from './refine.mjs';
 import { checkAI, providers } from './ai.mjs';
 import { createLibrary, blogAddress } from './tistory.mjs';
 import { createCategories } from './categories.mjs';
@@ -25,7 +26,7 @@ const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 const fail = (condition, message, status = 400) => { if (!condition) throw Object.assign(new Error(message), { status }); };
 const MIME = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.js': 'text/javascript', '.css': 'text/css', '.html': 'text/html' };
 
-export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), generator = generate, checkGenerator = checkAI, fetchPublic = fetch, publishAdapter = null, categoryReader = null, accountReader = null, styleAnalyzer, fetchStyle, fetchReference, notionReader } = {}) {
+export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), generator = generate, refiner = refineWriting, checkGenerator = checkAI, fetchPublic = fetch, publishAdapter = null, categoryReader = null, accountReader = null, styleAnalyzer, fetchStyle, fetchReference, notionReader } = {}) {
   const c = json(path.join(root, 'tistory.config.json'));
   let library = createLibrary(root, c.blogUrl, fetchPublic);
   let categories = createCategories({ root, blogUrl: c.blogUrl, reader: categoryReader });
@@ -39,6 +40,7 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
   const token = randomBytes(32).toString('hex');
   const active = new Set();
   const generationStates = new Map();
+  const refinementStates = new Map();
   const referenceReadStates = new Map();
   const aiFile = path.join(root, 'ai.settings.json');
   let provider = exists(aiFile) ? json(aiFile).provider : 'codex';
@@ -76,6 +78,8 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
     const dir = jobDir(id), meta = metaFor(dir), saved = savedDirectory(id, meta);
     const state = generationStates.get(id) || (meta.generating ? { phase: 'error', message: '앱이 재시작되어 글 작성이 중단됐습니다. 다시 시도해 주세요.' } : { phase: 'idle' });
     const draft = saved && exists(path.join(saved, 'draft.json')) ? json(path.join(saved, 'draft.json')) : null;
+    const undoFile = saved && path.join(saved, 'refinement-undo.json');
+    const undo = undoFile && exists(undoFile) ? json(undoFile) : null;
     const savedInput = saved ? json(path.join(saved, 'manifest.json')) : null;
     const references = readReferences(dir);
     const sameReferences = JSON.stringify(references) === JSON.stringify(savedInput?.references || []);
@@ -97,12 +101,13 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
       coverImages: [...new Set([...(meta.coverUploads || []), ...(savedInput?.coverImages || []).map(i => i.name)])].map(name => ({ name, label:meta.labels?.[name] || '표지 사진', url:`/api/jobs/${id}/${savedInput?.coverImages?.some(i=>i.name===name) ? 'draft-images' : 'images'}/${encodeURIComponent(name)}` })),
       review: saved && exists(path.join(saved, 'review.md')) ? fs.readFileSync(path.join(saved, 'review.md'), 'utf8') : '',
       analysis: saved && exists(path.join(saved, 'analysis.md')) ? fs.readFileSync(path.join(saved, 'analysis.md'), 'utf8') : '',
-      generation: state, changed, transfer: meta.transfer || null,
+      generation: state, refinement: { ...(refinementStates.get(id) || (meta.refining ? { phase: 'error', message: '앱이 종료되어 글 다듬기가 중단됐습니다. 원문을 확인한 뒤 다시 시도해 주세요.' } : { phase: 'idle' })),
+        canUndo: !!(draft && undo && !undo.undone && undo.afterDigest === draftDigest(saved)) }, changed, transfer: meta.transfer || null,
       draftDigest: draft ? draftDigest(saved) : null, publication: publications.state(dir) };
   }
   const saveMeta = (dir, patch) => write(path.join(dir, 'app.json'), { ...metaFor(dir), ...patch, updatedAt: new Date().toISOString() });
-  function prepare(id) {
-    readyJob(root, id);
+  function prepare(id, allowEmptyImages = false) {
+    readyJob(root, id, { allowEmptyImages });
     const prepared = prepareJob(root, id);
     saveMeta(jobDir(id), { directory: prepared.directory });
     return prepared.directory;
@@ -391,11 +396,49 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
             .finally(() => active.delete(id));
           return;
         }
+        if (action === 'refine' && req.method === 'POST') {
+          const body = await bodyJson(req);
+          mutableJob(id);
+          fail(!checkingAI && active.size === 0, '다른 AI 작업이 끝난 뒤 다듬어 주세요.', 409);
+          const before = readJob(id), directory = savedDirectory(id, metaFor(dir));
+          fail(before.draft && directory, '먼저 글을 작성해 보관해 주세요.');
+          fail(body.draftDigest === before.draftDigest, '다른 창에서 글이 바뀌었습니다. 다시 열어 확인해 주세요.', 409);
+          const indices = refinementSelection(before.draft, body.indices);
+          const instruction = body.instruction ?? '';
+          fail(typeof instruction === 'string' && instruction.length <= 2000, '다듬기 요청은 2,000자 이하로 입력해 주세요.');
+          const context = { provider, style: styles.state().profile, writing: writingPrompts.resolve(before.draft.category), instruction, indices, selectedAt: new Date().toISOString() };
+          active.add(id); saveMeta(dir, { refining: true });
+          refinementStates.set(id, { phase: 'refining', message: `${indices.length}개 칸을 다듬을 준비를 하고 있어요.` });
+          sendJson(res, readJob(id), 202);
+          Promise.resolve().then(() => refiner({ ...context, draft: structuredClone(before.draft),
+            onProgress: message => refinementStates.set(id, { phase: 'refining', message }) }))
+            .then(result => {
+              const next = applyRefinement(before.draft, indices, result);
+              fail(draftDigest(directory) === before.draftDigest, '다듬는 동안 원문이 바뀌어 적용하지 않았습니다.', 409);
+              persistDraft(id, directory, next, before.review);
+              write(path.join(directory, 'refinement-undo.json'), { draft: before.draft, review: before.review, afterDigest: draftDigest(directory) });
+              write(path.join(directory, 'refinement-context.json'), context);
+              refinementStates.set(id, { phase: 'done', message: `${indices.length}개 칸을 다듬어 보관했어요. 결과를 확인해 주세요.` });
+            }).catch(error => refinementStates.set(id, { phase: 'error', message: error.message }))
+            .finally(() => { saveMeta(dir, { refining: false }); active.delete(id); });
+          return;
+        }
+        if (action === 'refine/undo' && req.method === 'POST') {
+          const body = await bodyJson(req);
+          mutableJob(id);
+          const before = readJob(id), directory = savedDirectory(id, metaFor(dir));
+          fail(before.refinement.canUndo && body.draftDigest === before.draftDigest, '다듬기 이후 글이 바뀌어 되돌릴 수 없습니다. 보관된 원문을 확인해 주세요.', 409);
+          const undoFile = path.join(directory, 'refinement-undo.json'), undo = json(undoFile);
+          persistDraft(id, directory, undo.draft, before.review);
+          write(undoFile, { ...undo, undone: true });
+          refinementStates.set(id, { phase: 'idle', message: '다듬기 전 글로 되돌렸어요.' });
+          return sendJson(res, readJob(id));
+        }
         if (action === 'draft' && req.method === 'PUT') {
           const b = await bodyJson(req);
           mutableJob(id);
           const meta = metaFor(dir);
-          const directory = savedDirectory(id, meta) || prepare(id);
+          const directory = savedDirectory(id, meta) || prepare(id, true);
           fail(typeof b.review === 'string', '검토 메모 형식을 확인해 주세요.');
           persistDraft(id, directory, b.draft, b.review);
           return sendJson(res, readJob(id));

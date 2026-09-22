@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { createApp } from '../scripts/server.mjs';
+import { writingExamples } from '../scripts/writing-prompts.mjs';
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hdev-writing-ui-'));
 app.setPath('userData', path.join(root, 'electron')); app.on('window-all-closed', () => {});
@@ -43,8 +44,10 @@ async function run() {
     assert.equal(await js(`document.getElementById('style-profile').value`),defaultPrompt);
     assert.equal(await js(`document.getElementById('prompt-category').value`),JSON.stringify(categories[2]));
     assert.deepEqual(await js(`[...document.getElementById('prompt-category').options].map(option=>option.textContent)`),['카테고리 없음','뉴스','인사이트']);
-    await select('prompt-example','news');await click('apply-prompt-example');
-    assert.match(await js(`document.getElementById('category-prompt').value`),/뉴스 브리핑/);
+    for (const example of writingExamples) {
+      await select('prompt-example',example.id);await click('apply-prompt-example');
+      assert.equal(await js(`document.getElementById('category-prompt').value`),example.prompt);
+    }
     const newsPrompt='뉴스는 핵심 발표와 개발자에게 주는 영향 순서로 씁니다. 문장 끝은 합니다로 통일합니다.';
     const insightPrompt='인사이트는 질문, 근거, 다른 해석, 적용 기준 순서로 설명합니다.';
     await type(newsPrompt);await select('prompt-category',JSON.stringify(categories[3]));await type(insightPrompt);

@@ -17,7 +17,7 @@ function upgradeDefaultProfile(root, bundle) {
   const history = path.join(root, 'style/history');
   fs.mkdirSync(history, { recursive: true });
   const id = `${Date.now()}-${randomUUID()}`;
-  fs.copyFileSync(profile, path.join(history, `before-default-0.7.5-${id}.md`), fs.constants.COPYFILE_EXCL);
+  fs.copyFileSync(profile, path.join(history, `before-default-0.8.0-${id}.md`), fs.constants.COPYFILE_EXCL);
   const temporary = `${profile}.${id}.tmp`;
   fs.writeFileSync(temporary, next, { flag: 'wx' });
   fs.renameSync(temporary, profile);

@@ -89,6 +89,13 @@
             <label class="sr-only" for="draft-title">글 제목</label><input id="draft-title" class="draft-title" placeholder="제목을 입력하세요">
             <label class="sr-only" for="draft-tags">태그</label><input id="draft-tags" class="draft-tags" placeholder="태그를 쉼표로 구분해 입력">
             <p class="editor-help">왼쪽 손잡이를 끌어 순서를 바꾸고, 항목 사이의 <strong>＋</strong>로 내용을 넣어보세요.</p>
+            <section class="refine-toolbar" aria-label="AI 글 다듬기">
+              <div class="refine-heading"><strong>✦ 글 다듬기</strong><span>직접 쓰거나 붙여넣은 글을 내 말투로</span></div>
+              <label class="sr-only" for="refine-instruction">글 다듬기 요청 (선택)</label>
+              <input id="refine-instruction" maxlength="2000" placeholder="원하는 방향 (선택) · 예: 쉽게 설명하고 문장을 자연스럽게 연결해줘">
+              <div class="refine-actions"><label class="refine-select-all"><input id="refine-select-all" type="checkbox"> 전체 선택</label><span id="refine-count">0개 선택</span><button id="refine-selected" type="button" class="button secondary">✦ 선택한 칸 다듬기</button><button id="refine-undo" type="button" class="text-button" hidden>다듬기 되돌리기</button></div>
+              <p id="refine-status" role="status" aria-live="polite">각 칸의 버튼으로 하나씩 다듬을 수도 있어요. 코드와 사진 파일은 유지합니다.</p>
+            </section>
             <div id="editor-status" class="sr-only" role="status" aria-live="polite"></div>
             <div id="block-editor"></div>
             <div class="add-block"><select id="block-type" aria-label="추가할 내용 유형"><option value="paragraph">문단</option><option value="heading">소제목</option><option value="code">코드</option><option value="list">목록</option><option value="image">사진</option><option value="table">비교 표</option></select><button id="add-block" class="text-button">＋ 맨 뒤에 추가</button></div>
@@ -127,7 +134,7 @@
             <p id="prompt-category-help" class="style-help" role="status"></p>
             <label for="prompt-example">시작할 때 참고할 예시</label><select id="prompt-example"></select>
             <button id="apply-prompt-example" class="button secondary">예시 가져오기</button>
-            <p class="style-help">예시를 가져온 뒤 원하는 말투로 수정하고 저장하세요. 예시 가져오기는 편집칸의 내용을 바꿉니다.</p>
+            <p class="style-help">공개 블로그의 글 구성을 참고한 예시입니다. 가져온 뒤 원하는 말투로 수정하고 저장하세요. 예시 가져오기는 편집칸의 내용을 바꿉니다.</p>
           </div>
           <div class="category-writing-editor">
             <label for="category-prompt">이 카테고리의 글쓰기 지침</label>
