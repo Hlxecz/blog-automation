@@ -1,7 +1,7 @@
 {
   "name": "tistory-draft-workflow",
   "private": true,
-  "version": "0.7.4",
+  "version": "0.7.5",
   "description": "H.Dev Studio - 개발 캡처와 티스토리 글 작업실",
   "author": "H.Dev",
   "main": "desktop/main.mjs",

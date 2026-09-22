@@ -58,3 +58,54 @@ test('packaged assets stay separate from writable data and initialization preser
   assert.equal(add.status,201); assert.equal((await add.json()).length,2);
   assert.equal((await fetch(base+'/api/blogs',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status,403);
 });
+
+test('the old bundled prompt upgrades with an exact backup and leaves user data intact', t => {
+  const bundle = path.resolve('.');
+  const oldTemplate = fs.readFileSync(path.join(bundle, 'test/fixtures/style-0.7.4.md'), 'utf8');
+  const expected = fs.readFileSync(path.join(bundle, 'config/style.example.md'), 'utf8');
+  assert.ok(expected.length > 6000);
+  for (const previous of [oldTemplate.replace(/\r\n/g, '\n'), oldTemplate.replace(/\r?\n/g, '\r\n')]) {
+    const root = temp(t);
+    initializeData(root, bundle);
+    const profile = path.join(root, 'style/profile.md');
+    fs.writeFileSync(profile, previous);
+    const preserved = {
+      'style/settings.json': JSON.stringify({ urls: ['https://sample-blog.tistory.com'], sources: [] }),
+      'style/category-prompts.json': '{"personal-category":"keep"}',
+      'inbox/note.md': '사진과 메모를 보존합니다.',
+      'drafts/draft.json': '{"title":"보관한 초안"}'
+    };
+    for (const [relative, text] of Object.entries(preserved)) fs.writeFileSync(path.join(root, relative), text);
+    const config = fs.readFileSync(path.join(root, 'tistory.config.json'), 'utf8');
+    initializeData(root, bundle);
+    assert.equal(fs.readFileSync(profile, 'utf8'), expected);
+    const history = path.join(root, 'style/history');
+    const backups = fs.readdirSync(history);
+    assert.equal(backups.length, 1);
+    assert.equal(fs.readFileSync(path.join(history, backups[0]), 'utf8'), previous);
+    initializeData(root, bundle);
+    assert.deepEqual(fs.readdirSync(history), backups);
+    assert.equal(fs.readFileSync(path.join(root, 'tistory.config.json'), 'utf8'), config);
+    for (const [relative, text] of Object.entries(preserved)) assert.equal(fs.readFileSync(path.join(root, relative), 'utf8'), text);
+  }
+});
+
+test('default prompt upgrade preserves edits to the old template and custom profile locations', t => {
+  const root = temp(t), bundle = path.resolve('.');
+  const oldTemplate = fs.readFileSync(path.join(bundle, 'test/fixtures/style-0.7.4.md'), 'utf8');
+  initializeData(root, bundle);
+  const profile = path.join(root, 'style/profile.md');
+  const edited = oldTemplate + '\n내가 추가한 문체 규칙';
+  fs.writeFileSync(profile, edited);
+  initializeData(root, bundle);
+  assert.equal(fs.readFileSync(profile, 'utf8'), edited);
+  const configFile = path.join(root, 'tistory.config.json');
+  const config = JSON.parse(fs.readFileSync(configFile));
+  fs.writeFileSync(configFile, JSON.stringify({ ...config, styleProfile: 'custom-profile.md' }));
+  fs.writeFileSync(path.join(root, 'custom-profile.md'), oldTemplate);
+  fs.writeFileSync(profile, oldTemplate);
+  initializeData(root, bundle);
+  assert.equal(fs.readFileSync(path.join(root, 'custom-profile.md'), 'utf8'), oldTemplate);
+  assert.equal(fs.readFileSync(profile, 'utf8'), oldTemplate);
+  assert.equal(fs.existsSync(path.join(root, 'style/history')), false);
+});
