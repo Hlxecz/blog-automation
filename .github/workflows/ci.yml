@@ -30,3 +30,4 @@ jobs:
       - run: npm run test:writing
       - run: npm run test:setup
       - run: npm run test:account
+      - run: npm run test:refine

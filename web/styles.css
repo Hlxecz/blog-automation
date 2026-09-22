@@ -168,6 +168,20 @@ input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px soli
 .github-card-actions>span{flex:1}.github-card-actions .text-button{font-size:11px;color:#cf222e;margin:0}
 @media(max-width:460px){.draft-toolbar-actions{margin-left:0;width:100%;justify-content:space-between}.github-card-form .github-form-row:not(.github-icon-row){grid-template-columns:1fr}.github-card-actions .button{padding:9px 11px}}
 #block-editor .edit-block{margin:0;border-color:var(--line)}
+.refine-toolbar{margin:16px 0 20px;padding:14px;background:var(--surface);border:1px solid var(--line);border-radius:6px}
+.refine-heading{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:10px;font-size:12px}
+.refine-heading span{font-size:11px;color:var(--muted)}
+#refine-instruction{width:100%;background:#fff;border:1px solid var(--line);border-radius:5px;padding:10px;font-size:12px}
+.refine-actions{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-top:12px;font-size:11px}
+.refine-select-all{display:flex;align-items:center;gap:6px;cursor:pointer}
+.refine-actions input,.block-refine-select{accent-color:var(--accent);width:15px;height:15px;cursor:pointer}
+#refine-count{color:var(--muted)}
+.refine-actions .button{font-size:11px;padding:7px 10px}
+#refine-status{font-size:11px;line-height:1.7;margin:10px 0 0;color:var(--muted)}
+#refine-status.error{color:#cf222e}
+#block-editor .edit-block.refine-selected{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.edit-block-header .block-refine{color:var(--accent);font-size:11px;white-space:nowrap}
+@media(max-width:760px){.refine-toolbar{padding:10px}.refine-actions{gap:8px}.edit-block-header{flex-wrap:wrap;gap:4px}.edit-block-actions{margin-left:auto}}
 .edit-block-label,.edit-block-actions{display:flex;align-items:center;gap:5px}
 .edit-block-header .block-drag-handle{display:grid;place-items:center;width:30px;height:30px;padding:5px;cursor:grab;touch-action:none}
 .block-drag-handle svg{pointer-events:none}

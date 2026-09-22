@@ -1,4 +1,4 @@
-import { articleBlocks, uncategorizedCategory, selectableCategories, categoryLabel } from './draft-model.js';
+import { articleBlocks, uncategorizedCategory, selectableCategories, categoryLabel, canRefineBlock } from './draft-model.js';
 import { renderArticleContent, renderGitHubCard, normalizeGitHubCard } from './article-renderer.js';
 import { initStyleSettings } from './style-settings.js';
 import { initCategoryPrompts } from './category-prompts.js';
@@ -32,9 +32,11 @@ let draftDirty = false, materialDirty = false, materialVersion = 0, saveTimer, p
 let saveQueue = Promise.resolve(), uploadBusy = false, switching = false, publishStarting = false, publishTimer;
 let deleting = false, draftSave = Promise.resolve(), categoryLoading = false, categoryPollTimer, tistoryConnecting = false;
 let blockDrag = null;
+let refineStarting = false, refineTimer;
+const refineSelection = new Set();
 const blockLabels = {paragraph:'문단',heading:'소제목',code:'코드',list:'목록',image:'사진',table:'비교 표'};
 const isPublishing = p => ['preparing','waiting_login','uploading','filling','submitting','verifying'].includes(p?.phase);
-const busy = (allowPublicationSave = false) => tistoryConnecting || categoryLoading || settings?.categories?.busy || referenceStarting || current?.referenceRead?.phase === 'reading' || deleting || uploadBusy || (!allowPublicationSave && publishStarting) || current?.generation.phase === 'generating' || isPublishing(current?.publication);
+const busy = (allowPublicationSave = false, allowRefineSave = false) => (!allowRefineSave && refineStarting) || current?.refinement?.phase === 'refining' || tistoryConnecting || categoryLoading || settings?.categories?.busy || referenceStarting || current?.referenceRead?.phase === 'reading' || deleting || uploadBusy || (!allowPublicationSave && publishStarting) || current?.generation.phase === 'generating' || isPublishing(current?.publication);
 
 async function api(url, options = {}) {
   const response = await fetch(url, { ...options, headers: { 'X-App-Token': token || '', ...(options.json !== undefined ? { 'Content-Type': 'application/json' } : {}), ...options.headers }, body: options.json !== undefined ? JSON.stringify(options.json) : options.body });
@@ -169,7 +171,7 @@ $('modal').addEventListener('cancel', e => { if (deleting) e.preventDefault(); }
 $('modal').addEventListener('click', e => { if (!deleting && e.target === $('modal') && (e.offsetX < 0 || e.offsetY < 0 || e.offsetX > $('modal').clientWidth || e.offsetY > $('modal').clientHeight)) $('modal').close(); });
 function saveStatus(text) { $('save-state').textContent = text; }
 function markMaterial() { materialDirty = true; materialVersion++; saveStatus('변경사항 보관 중…'); clearTimeout(saveTimer); saveTimer = setTimeout(() => saveMaterial().catch(e => { saveStatus('보관 실패'); toast(e.message,true); }), 800); }
-function markDraft() { draftDirty = true; saveStatus('수정한 글 · 보관 필요'); updateFooter(); }
+function markDraft() { draftDirty = true; saveStatus('수정한 글 · 보관 필요'); updateFooter(); updateRefinementControls(); }
 
 function renderCategories() {
   const state = settings?.categories, select = $('draft-category');
@@ -238,9 +240,9 @@ async function ensureJob() {
   }
   return current;
 }
-async function saveMaterial(allowPublicationSave = false) {
+async function saveMaterial(allowPublicationSave = false, allowRefineSave = false) {
   clearTimeout(saveTimer);
-  if (!materialDirty || busy(allowPublicationSave)) return saveQueue;
+  if (!materialDirty || busy(allowPublicationSave, allowRefineSave)) return saveQueue;
   await ensureJob();
   const id = current.id, version = materialVersion;
   const body = { title:$('topic').value, notes:$('notes').value, order:current.images.map(i => i.name), references:structuredClone(references), category: structuredClone(currentCategory()) };
@@ -253,10 +255,10 @@ async function saveMaterial(allowPublicationSave = false) {
   }
   await refreshJobs();
 }
-async function saveAll(allowPublicationSave = false) {
-  if (busy(allowPublicationSave)) return;
-  await saveMaterial(allowPublicationSave);
-  if (busy(allowPublicationSave)) return;
+async function saveAll(allowPublicationSave = false, allowRefineSave = false) {
+  if (busy(allowPublicationSave, allowRefineSave)) return;
+  await saveMaterial(allowPublicationSave, allowRefineSave);
+  if (busy(allowPublicationSave, allowRefineSave)) return;
   if (draft && draftDirty) {
     await ensureJob();
     draftSave = api(`/api/jobs/${current.id}/draft`, { method:'PUT', json:{ draft, review:$('review-notes').value } });
@@ -346,11 +348,12 @@ async function refreshJobs() {
 }
 async function selectJob(id) {
   showWorkspace();
-  if (switching || publishStarting || deleting || uploadBusy || referenceStarting) return;
+  if (switching || publishStarting || deleting || uploadBusy || referenceStarting || refineStarting || current?.refinement?.phase === 'refining') return;
   switching = true;
   try {
     await saveAll(); clearTimeout(pollTimer); clearTimeout(referenceTimer);
     current = await api(`/api/jobs/${id}`); draft = current.draft ? structuredClone(current.draft) : null;
+    refineSelection.clear(); clearTimeout(refineTimer);
     selectedCategory = structuredClone(current.category || null);
     references = structuredClone(current.references || []); resetReferenceForm(); renderReferences();
     draftDirty = false; materialDirty = false; localStorage.setItem('hdev.current', id);
@@ -362,6 +365,7 @@ async function selectJob(id) {
     renderPhotos(); renderDraft(); updateControls(); await refreshJobs();
     saveStatus('이 PC에 보관됨');
     if (current.generation.phase === 'generating') pollGeneration(id);
+    if (current.refinement?.phase === 'refining') pollRefinement(id);
     if (current.referenceRead?.phase === 'reading') pollReferences(id);
     if (isPublishing(current.publication)) pollPublication(id);
   } finally { switching = false; updateControls(); }
@@ -372,6 +376,7 @@ async function newPost() {
   await saveAll(); clearWorkspace();
 }
 function clearWorkspace() {
+  clearTimeout(refineTimer); refineSelection.clear(); $('refine-instruction').value = '';
   clearTimeout(saveTimer); clearTimeout(pollTimer); clearTimeout(publishTimer);
   clearTimeout(referenceTimer);
   current = null; draft = null; draftDirty = false; materialDirty = false;
@@ -543,7 +548,7 @@ function updateControls() {
   $('reference-list').querySelectorAll('button,textarea').forEach(el => { el.disabled = running; });
   updateReferenceReports();
   $('generate').disabled = running || !hasImages;
-  $('manual-start').disabled = running || !hasImages;
+  $('manual-start').disabled = running;
   $('save-all').disabled = running;
   $('github-card').disabled = running || !draft;
   $('github-card').setAttribute('aria-pressed',String(!!draft?.githubCard));
@@ -585,7 +590,73 @@ function updateControls() {
     el.querySelector('.block-drag-handle').draggable=!running;
   });
   if (running) { clearBlockDrag(); closeBlockInsertMenus(); }
+  updateRefinementControls();
 }
+
+function updateRefinementControls() {
+  const blocks = draft?.blocks || [], eligible = blocks.filter(canRefineBlock), running = busy();
+  for (const block of refineSelection) if (!blocks.includes(block) || !canRefineBlock(block)) refineSelection.delete(block);
+  const all = $('refine-select-all');
+  all.checked = eligible.length > 0 && refineSelection.size === eligible.length;
+  all.indeterminate = refineSelection.size > 0 && !all.checked;
+  all.disabled = running || !eligible.length;
+  $('refine-count').textContent = `${refineSelection.size}개 선택`;
+  $('refine-selected').disabled = running || !refineSelection.size;
+  $('refine-instruction').disabled = running;
+  $('refine-undo').hidden = !current?.refinement?.canUndo;
+  $('refine-undo').disabled = running || draftDirty;
+  $('refine-status').textContent = refineStarting ? '수정한 글을 보관하고 있어요…' : current?.refinement?.message || '각 칸의 버튼으로 하나씩 다듬을 수도 있어요. 코드와 사진 파일은 유지합니다.';
+  $('refine-status').classList.toggle('error', current?.refinement?.phase === 'error');
+  $('block-editor').querySelectorAll('.edit-block').forEach((element, index) => {
+    const block = blocks[index], checked = refineSelection.has(block), checkbox = element.querySelector('.block-refine-select'), button = element.querySelector('.block-refine');
+    element.classList.toggle('refine-selected', checked);
+    if (checkbox) { checkbox.checked = checked; checkbox.disabled = running || !canRefineBlock(block); }
+    if (button) button.disabled = running || !canRefineBlock(block);
+  });
+}
+$('refine-select-all').onchange = event => {
+  refineSelection.clear();
+  if (event.target.checked) draft.blocks.filter(canRefineBlock).forEach(block => refineSelection.add(block));
+  updateRefinementControls();
+};
+$('refine-selected').onclick = () => startRefinement([...refineSelection]);
+async function startRefinement(blocks) {
+  if (!draft || busy() || switching) return;
+  const indices = blocks.map(block => draft.blocks.indexOf(block)).filter(index => index >= 0 && canRefineBlock(draft.blocks[index]));
+  if (!indices.length) { toast('먼저 칸에 글을 입력해 주세요.', true); return; }
+  refineStarting = true; updateControls();
+  try {
+    await saveAll(false, true);
+    current = await api(`/api/jobs/${current.id}/refine`, { method: 'POST', json: { indices, instruction: $('refine-instruction').value, draftDigest: current.draftDigest } });
+    pollRefinement(current.id);
+  } catch (error) { toast(error.message, true); }
+  finally { refineStarting = false; updateControls(); }
+}
+function pollRefinement(id) {
+  clearTimeout(refineTimer);
+  refineTimer = setTimeout(async () => {
+    try {
+      const next = await api(`/api/jobs/${id}`); if (current?.id !== id) return;
+      current = next; updateControls();
+      if (next.refinement.phase === 'refining') { pollRefinement(id); return; }
+      if (next.refinement.phase === 'done') {
+        draft = structuredClone(next.draft); draftDirty = false; refineSelection.clear(); mode = 'edit';
+        renderDraft(); saveStatus('다듬은 글 보관됨');
+      }
+      toast(next.refinement.message || '글 다듬기 상태를 확인해 주세요.', next.refinement.phase === 'error');
+      await refreshJobs();
+    } catch (error) { toast(error.message, true); pollRefinement(id); }
+  }, 900);
+}
+$('refine-undo').onclick = async () => {
+  if (busy() || draftDirty || !current?.refinement?.canUndo) return;
+  refineStarting = true; updateControls();
+  try {
+    current = await api(`/api/jobs/${current.id}/refine/undo`, { method: 'POST', json: { draftDigest: current.draftDigest } });
+    draft = structuredClone(current.draft); refineSelection.clear(); renderDraft(); saveStatus('되돌린 글 보관됨'); toast(current.refinement.message);
+  } catch (error) { toast(error.message, true); }
+  finally { refineStarting = false; updateControls(); }
+};
 function updateFooter() {
   $('word-count').textContent = draft ? `${draft.blocks.reduce((n,b)=>n+(b.text||b.items?.join('')||b.caption||'').replace(/\s/g,'').length,0).toLocaleString()}자 · 사진 ${articleBlocks(draft).filter(b=>b.type==='image').length}장` : '사진과 글이 함께 표시됩니다';
 }
@@ -714,7 +785,7 @@ function showBlockDrop(event, position) {
 function finishBlockEdit(index, editing=false) {
   markDraft(); renderEditor(); renderCover();
   const block=$('block-editor').querySelectorAll('.edit-block')[index];
-  const focus=block?.querySelector(editing?'textarea,input':'.block-drag-handle') || $('block-editor').querySelector('.block-insert-toggle');
+  const focus=block?.querySelector(editing?'textarea,.image-caption':'.block-drag-handle') || $('block-editor').querySelector('.block-insert-toggle');
   focus?.focus({preventScroll:true}); focus?.scrollIntoView({block:'nearest'});
   if (editing) focus?.select?.();
 }
@@ -785,6 +856,15 @@ function renderEditor() {
     const el=document.createElement('div'); el.className='edit-block'; el.dataset.type=b.type;
     el.innerHTML=`<div class="edit-block-header"><span class="edit-block-label"><button type="button" class="block-drag-handle" draggable="true" aria-label="${index+1}번 ${blockLabels[b.type]} 끌어서 이동" title="끌어서 이동 · 위아래 방향키로도 이동할 수 있어요"><svg viewBox="0 0 12 18" width="12" height="18" fill="currentColor" aria-hidden="true"><circle cx="3" cy="3" r="1.5"/><circle cx="9" cy="3" r="1.5"/><circle cx="3" cy="9" r="1.5"/><circle cx="9" cy="9" r="1.5"/><circle cx="3" cy="15" r="1.5"/><circle cx="9" cy="15" r="1.5"/></svg></button>${blockLabels[b.type]}</span><span class="edit-block-actions"><button type="button" class="block-up" aria-label="블록 ${index+1} 위로 이동">↑</button><button type="button" class="block-down" aria-label="블록 ${index+1} 아래로 이동">↓</button><button type="button" class="block-remove" aria-label="블록 ${index+1} 삭제">×</button></span></div>`;
     const handle=el.querySelector('.block-drag-handle');
+    if (b.type !== 'code') {
+      const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.className = 'block-refine-select';
+      checkbox.setAttribute('aria-label', `${index+1}번 ${blockLabels[b.type]} 다듬기 선택`);
+      checkbox.onchange = () => { if (checkbox.checked) refineSelection.add(b); else refineSelection.delete(b); updateRefinementControls(); };
+      el.querySelector('.edit-block-label').append(checkbox);
+      const refine = document.createElement('button'); refine.type = 'button'; refine.className = 'block-refine'; refine.textContent = '✦ 글 다듬기';
+      refine.setAttribute('aria-label', `${index+1}번 ${blockLabels[b.type]} 글 다듬기`); refine.onclick = () => startRefinement([b]);
+      el.querySelector('.edit-block-actions').prepend(refine);
+    }
     handle.ondragstart=event=>{
       if (busy() || switching) {event.preventDefault();return;}
       closeBlockInsertMenus(); blockDrag={draft,block:b};
@@ -827,7 +907,8 @@ $('draft-tags').oninput=()=>{draft.tags=$('draft-tags').value.split(',').map(t=>
 $('review-notes').oninput=markDraft;
 $('edit-view').onclick=()=>{mode='edit';renderDraft();}; $('preview-view').onclick=()=>{mode='preview';renderDraft();};
 $('manual-start').onclick=async()=>{
-  try{await saveMaterial();draft={title:$('topic').value||'새로운 개발 기록',tags:[],category:structuredClone(currentCategory()),blocks:[{type:'paragraph',text:'이곳에 개발 기록을 적어주세요.'},...current.images.map(i=>({type:'image',file:i.name,alt:i.label,caption:''}))]};draftDirty=true;await saveAll();mode='edit';renderDraft();}catch(e){toast(e.message,true);}
+  if (busy()) return;
+  try{await ensureJob();await saveMaterial();draft={title:$('topic').value||'새로운 개발 기록',tags:[],category:structuredClone(currentCategory()),blocks:[{type:'paragraph',text:'이곳에 글을 직접 쓰거나 붙여넣어 주세요.'},...current.images.map(i=>({type:'image',file:i.name,alt:i.label,caption:''}))]};draftDirty=true;await saveAll();mode='edit';renderDraft();}catch(e){toast(e.message,true);}
 };
 $('add-block').onclick=()=>{if(draft)insertBlock($('block-type').value,draft.blocks.length);};
 $('generate').onclick=async()=>{
@@ -869,7 +950,7 @@ function pollPublication(id){
     }catch(e){toast(e.message,true);pollPublication(id);}
   },1800);
 }
-window.addEventListener('beforeunload',e=>{if(draftDirty||materialDirty||styleSettings.isDirty()||categoryPrompts.isDirty()){e.preventDefault();e.returnValue='';}});
+window.addEventListener('beforeunload',e=>{if(refineStarting||current?.refinement?.phase==='refining'||draftDirty||materialDirty||styleSettings.isDirty()||categoryPrompts.isDirty()){e.preventDefault();e.returnValue='';}});
 
 async function boot(){
   try{

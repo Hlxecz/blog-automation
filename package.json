@@ -1,7 +1,7 @@
 {
   "name": "tistory-draft-workflow",
   "private": true,
-  "version": "0.7.5",
+  "version": "0.8.0",
   "description": "H.Dev Studio - 개발 캡처와 티스토리 글 작업실",
   "author": "H.Dev",
   "main": "desktop/main.mjs",
@@ -19,6 +19,7 @@
     "test:writing": "electron validation/electron-writing-prompts.mjs",
     "test:setup": "electron validation/electron-blog-setup.mjs",
     "test:account": "electron validation/electron-account.mjs",
+    "test:refine": "electron validation/electron-refine.mjs",
     "desktop": "electron .",
     "release:check": "node scripts/release.mjs check",
     "release:checksums": "node scripts/release.mjs checksums",

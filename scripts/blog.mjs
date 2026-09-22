@@ -35,7 +35,7 @@ function realFile(file, directory = false) {
     `일반 ${directory ? '폴더' : '파일'}만 사용할 수 있습니다: ${file}`);
 }
 
-function snapshot(job) {
+function snapshot(job, allowEmptyImages = false) {
   realFile(job, true);
   realFile(path.join(job, 'images'), true);
   let names = fs.readdirSync(path.join(job, 'images')).filter(n => IMAGE.test(n))
@@ -47,7 +47,7 @@ function snapshot(job) {
     check(Array.isArray(order) && new Set(order).size === order.length && order.every(n => names.includes(n)), '사진 순서 목록이 올바르지 않습니다.');
     names = order;
   }
-  check(names.length, `images 폴더에 PNG, JPEG 또는 WebP 캡처를 넣으세요: ${job}`);
+  check(names.length || allowEmptyImages, `images 폴더에 PNG, JPEG 또는 WebP 캡처를 넣으세요: ${job}`);
   const images = names.map(name => {
     const file = path.join(job, 'images', name);
     realFile(file);
@@ -74,9 +74,9 @@ export function newJob(root, id) {
   return { id, job, images: path.join(job, 'images') };
 }
 
-export function readyJob(root, id) {
-  const c = config(root), job = jobPath(c, id), input = snapshot(job);
-  const ready = { digest: input.digest, readyAt: new Date().toISOString() };
+export function readyJob(root, id, { allowEmptyImages = false } = {}) {
+  const c = config(root), job = jobPath(c, id), input = snapshot(job, allowEmptyImages);
+  const ready = { digest: input.digest, readyAt: new Date().toISOString(), ...(allowEmptyImages ? { textOnly: true } : {}) };
   writeJson(path.join(job, 'ready.json'), ready);
   return { id, ...ready };
 }
@@ -88,7 +88,7 @@ export function listJobs(root) {
     try {
       const job = jobPath(c, d.name), marker = path.join(job, 'ready.json');
       if (!fs.existsSync(marker)) return { id: d.name, status: 'collecting' };
-      const input = snapshot(job);
+      const input = snapshot(job, readJson(marker).textOnly === true);
       if (readJson(marker).digest !== input.digest) return { id: d.name, status: 'changed', hint: 'ready를 다시 실행하세요.' };
       const dest = path.join(c.output, d.name, input.digest);
       let status = 'ready';
@@ -108,9 +108,10 @@ export function listJobs(root) {
 }
 
 export function prepareJob(root, id) {
-  const c = config(root), job = jobPath(c, id), input = snapshot(job);
+  const c = config(root), job = jobPath(c, id);
   const marker = path.join(job, 'ready.json');
   check(fs.existsSync(marker), '먼저 ready 명령으로 캡처 수집 완료를 표시하세요.');
+  const allowEmptyImages = readJson(marker).textOnly === true, input = snapshot(job, allowEmptyImages);
   check(readJson(marker).digest === input.digest, '준비 완료 이후 사진/메모가 바뀌었습니다. ready를 다시 실행하세요.');
   const dest = path.join(c.output, id, input.digest);
   const manifestFile = path.join(dest, 'manifest.json');
@@ -133,7 +134,7 @@ export function prepareJob(root, id) {
   }
   fs.writeFileSync(path.join(dest, 'notes.md'), input.notes);
   if (input.references.length) writeJson(path.join(dest, 'references.json'), input.references);
-  check(snapshot(job).digest === input.digest, '준비 중 원본이 바뀌었습니다. ready를 다시 실행하세요.');
+  check(snapshot(job, allowEmptyImages).digest === input.digest, '준비 중 원본이 바뀌었습니다. ready를 다시 실행하세요.');
   const manifest = { id, inputDigest: input.digest, preparedAt: new Date().toISOString(),
     blogUrl: c.blogUrl, images: input.images, styleSamples: c.styleSamples, styleProfile: c.styleProfile,
     ...(input.references.length ? { references: input.references } : {}) };
