@@ -59,12 +59,13 @@ test('packaged assets stay separate from writable data and initialization preser
   assert.equal((await fetch(base+'/api/blogs',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status,403);
 });
 
-test('the old bundled prompt upgrades with an exact backup and leaves user data intact', t => {
+test('구버전 기본 지침과 초기 말투를 백업 후 갱신하고 사용자 자료를 보존한다', t => {
   const bundle = path.resolve('.');
-  const oldTemplate = fs.readFileSync(path.join(bundle, 'test/fixtures/style-0.7.4.md'), 'utf8');
+  const oldTemplates = ['style-0.7.4.md', 'style-initial-20260915.md']
+    .map(name => fs.readFileSync(path.join(bundle, 'test/fixtures', name), 'utf8'));
   const expected = fs.readFileSync(path.join(bundle, 'config/style.example.md'), 'utf8');
   assert.ok(expected.length > 6000);
-  for (const previous of [oldTemplate.replace(/\r\n/g, '\n'), oldTemplate.replace(/\r?\n/g, '\r\n')]) {
+  for (const previous of oldTemplates.flatMap(text => [text.replace(/\r\n/g, '\n'), text.replace(/\r?\n/g, '\r\n'), text.trim()])) {
     const root = temp(t);
     initializeData(root, bundle);
     const profile = path.join(root, 'style/profile.md');
@@ -90,22 +91,25 @@ test('the old bundled prompt upgrades with an exact backup and leaves user data 
   }
 });
 
-test('default prompt upgrade preserves edits to the old template and custom profile locations', t => {
-  const root = temp(t), bundle = path.resolve('.');
-  const oldTemplate = fs.readFileSync(path.join(bundle, 'test/fixtures/style-0.7.4.md'), 'utf8');
-  initializeData(root, bundle);
-  const profile = path.join(root, 'style/profile.md');
-  const edited = oldTemplate + '\n내가 추가한 문체 규칙';
-  fs.writeFileSync(profile, edited);
-  initializeData(root, bundle);
-  assert.equal(fs.readFileSync(profile, 'utf8'), edited);
-  const configFile = path.join(root, 'tistory.config.json');
-  const config = JSON.parse(fs.readFileSync(configFile));
-  fs.writeFileSync(configFile, JSON.stringify({ ...config, styleProfile: 'custom-profile.md' }));
-  fs.writeFileSync(path.join(root, 'custom-profile.md'), oldTemplate);
-  fs.writeFileSync(profile, oldTemplate);
-  initializeData(root, bundle);
-  assert.equal(fs.readFileSync(path.join(root, 'custom-profile.md'), 'utf8'), oldTemplate);
-  assert.equal(fs.readFileSync(profile, 'utf8'), oldTemplate);
-  assert.equal(fs.existsSync(path.join(root, 'style/history')), false);
+test('기본 지침 갱신 시 사용자 수정본과 별도 프로필 경로를 보존한다', t => {
+  const bundle = path.resolve('.');
+  for (const name of ['style-0.7.4.md', 'style-initial-20260915.md']) {
+    const root = temp(t);
+    const oldTemplate = fs.readFileSync(path.join(bundle, 'test/fixtures', name), 'utf8');
+    initializeData(root, bundle);
+    const profile = path.join(root, 'style/profile.md');
+    const edited = oldTemplate + '\n내가 추가한 문체 규칙';
+    fs.writeFileSync(profile, edited);
+    initializeData(root, bundle);
+    assert.equal(fs.readFileSync(profile, 'utf8'), edited);
+    const configFile = path.join(root, 'tistory.config.json');
+    const config = JSON.parse(fs.readFileSync(configFile));
+    fs.writeFileSync(configFile, JSON.stringify({ ...config, styleProfile: 'custom-profile.md' }));
+    fs.writeFileSync(path.join(root, 'custom-profile.md'), oldTemplate);
+    fs.writeFileSync(profile, oldTemplate);
+    initializeData(root, bundle);
+    assert.equal(fs.readFileSync(path.join(root, 'custom-profile.md'), 'utf8'), oldTemplate);
+    assert.equal(fs.readFileSync(profile, 'utf8'), oldTemplate);
+    assert.equal(fs.existsSync(path.join(root, 'style/history')), false);
+  }
 });
