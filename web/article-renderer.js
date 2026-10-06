@@ -18,7 +18,7 @@ export const articleStyles = {
   'github-description': 'color:#57606a;font-size:0.85em;margin-top:2px;line-height:1.7;',
   paragraph: 'margin:16px 0;padding:0;color:#243b53;font-size:16px;line-height:1.9;text-align:left;word-break:keep-all;overflow-wrap:anywhere;',
   callout: 'box-sizing:border-box;max-width:100%;margin:24px 0;padding:20px 22px;border:0;border-left:4px solid;border-radius:0;text-align:left;word-break:keep-all;overflow-wrap:anywhere;',
-  tip: 'border-left-color:#247af6;background:#f1f6ff;color:#243b53;',
+  tip: 'border-left-color:#d69a16;background:#fff9e8;color:#2b2b2b;',
   warning: 'border-left-color:#b7791f;background:#fff8ed;color:#59401f;',
   summary: 'border-left-color:#168198;background:#eff8f8;color:#243b53;',
   'callout-title': 'display:block;margin:0;padding:0;color:inherit;font-size:16px;line-height:1.7;font-weight:700;word-break:keep-all;overflow-wrap:anywhere;',
@@ -53,6 +53,19 @@ const required = (value, name) => {
   if (typeof value !== 'string' || !value.trim()) throw new Error(`${name}에는 문자열이 필요합니다.`);
   return value;
 };
+
+export function renderImportedRich(block) {
+  if (!block || block.type !== 'rich' || typeof block.template !== 'string' || typeof block.templateKey !== 'string' || !Array.isArray(block.segments)) throw new Error('원문 형식 블록이 올바르지 않습니다.');
+  let html=block.template;
+  for (const [index,value] of block.segments.entries()) {
+    if (typeof value !== 'string' || value.length > 20000) throw new Error('원문 문장이 너무 깁니다.');
+    const token=`\uE000HDEV_${block.templateKey}_${index}\uE001`;
+    if (!html.includes(token)) throw new Error('원문 형식 블록의 문장 위치가 올바르지 않습니다.');
+    const escaped=escapeArticleText(value);html=html.replace(token,()=>escaped);
+  }
+  if (/\uE000HDEV_/.test(html)) throw new Error('원문 형식 블록의 문장이 누락되었습니다.');
+  return `<div class="hdev-rich-source" data-hdev-rich-source="${escapeArticleText(block.templateKey)}">${html}</div>`;
+}
 
 export function articleAttributes(names, inlineStyles = true) {
   const keys = names.split(' ');
@@ -116,6 +129,7 @@ export function renderArticleBlock(block, { inlineStyles = true, imageURL = name
         }).join('') + '</tbody></table></div>';
     case 'image': return `<figure ${attrs('figure')}><img ${attrs('image')} src="${escapeArticleText(imageURL(block.file))}" alt="${escapeArticleText(required(block.alt, 'image.alt'))}">` +
       (block.caption ? `<figcaption ${attrs('caption')}>${escapeArticleText(block.caption)}</figcaption>` : '') + '</figure>';
+    case 'rich': return renderImportedRich(block);
     default: throw new Error(`지원하지 않는 block.type: ${block.type}`);
   }
 }

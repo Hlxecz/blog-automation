@@ -3,6 +3,10 @@ export function canRefineBlock(block) {
   return !![block.text, block.alt, block.caption, ...(block.items || []), ...(block.headers || []), ...(block.rows || []).flat()].some(value => typeof value === 'string' && value.trim());
 }
 
+export function isImportedRichBlock(block) {
+  return !!block && block.type === 'rich' && typeof block.templateKey === 'string' && typeof block.template === 'string' && Array.isArray(block.segments);
+}
+
 // The same photo order is used in the app, exported preview, and publication.
 export function articleBlocks(draft) {
   if (!draft.cover) return draft.blocks;

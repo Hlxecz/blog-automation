@@ -31,3 +31,4 @@ jobs:
       - run: npm run test:setup
       - run: npm run test:account
       - run: npm run test:refine
+      - run: npm run test:existing

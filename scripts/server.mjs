@@ -3,20 +3,23 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID, randomBytes, createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { load } from 'cheerio';
 import { newJob, readyJob, prepareJob, renderDraft, buildPreview, listJobs } from './blog.mjs';
 import { generate } from './generate.mjs';
 import { refineWriting, refinementSelection, applyRefinement } from './refine.mjs';
 import { checkAI, providers } from './ai.mjs';
-import { createLibrary, blogAddress } from './tistory.mjs';
+import { createLibrary, blogAddress, readPublicArticle } from './tistory.mjs';
+import { normalizeImportedDraft, isAllowedRemoteImage, normalizePostUrl, mergeImportedDraft, stableRemoteUrl, remoteImageIdentity } from './existing-posts.mjs';
 import { createCategories } from './categories.mjs';
 import { createStyles } from './style.mjs';
 import { createWritingPrompts } from './writing-prompts.mjs';
 import { blogConfigured, requireBlog, saveBlogAddress } from './blog-settings.mjs';
 import { normalizeReferences, readReferences, collectReferences, referenceReview } from './references.mjs';
 import { createPublications, draftDigest } from './publication.mjs';
+import { createPostUpdates, updateBusy } from './post-update.mjs';
 import { jobStorage, deleteJobStorage } from './storage.mjs';
 import { manifestImage, normalizeCategory } from '../web/draft-model.js';
-import { articleCss, normalizeGitHubCard } from '../web/article-renderer.js';
+import { articleCss, normalizeGitHubCard, renderImportedRich } from '../web/article-renderer.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const json = file => JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, ''));
@@ -26,14 +29,15 @@ const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 const fail = (condition, message, status = 400) => { if (!condition) throw Object.assign(new Error(message), { status }); };
 const MIME = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.js': 'text/javascript', '.css': 'text/css', '.html': 'text/html' };
 
-export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), generator = generate, refiner = refineWriting, checkGenerator = checkAI, fetchPublic = fetch, publishAdapter = null, categoryReader = null, accountReader = null, styleAnalyzer, fetchStyle, fetchReference, notionReader } = {}) {
+export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), generator = generate, refiner = refineWriting, checkGenerator = checkAI, fetchPublic = fetch, publishAdapter = null, updateAdapter = null, categoryReader = null, accountReader = null, styleAnalyzer, fetchStyle, fetchReference, notionReader } = {}) {
   const c = json(path.join(root, 'tistory.config.json'));
   let library = createLibrary(root, c.blogUrl, fetchPublic);
   let categories = createCategories({ root, blogUrl: c.blogUrl, reader: categoryReader });
   const styles = createStyles({ root, profileFile: path.resolve(root, c.styleProfile), analyzer: styleAnalyzer, fetchPage: fetchStyle });
   let writingPrompts = createWritingPrompts({ root, blogUrl: c.blogUrl });
   let publications = createPublications({ adapter: publishAdapter, blogUrl: c.blogUrl, tocMode: c.tocMode });
-  let accountBlogs = null, connectingTistory = false;
+  let postUpdates = createPostUpdates({ adapter:updateAdapter, blogUrl:c.blogUrl, fetchPublic, tocMode:c.tocMode });
+  let accountBlogs = null, connectingTistory = false, importingPosts = false;
   const accountState = () => ({ canConnect: !!accountReader, busy: connectingTistory, blogs: accountBlogs });
   const listedBlogs = () => accountBlogs || library.list();
   const inbox = path.resolve(root, c.inbox), output = path.resolve(root, c.output);
@@ -93,6 +97,11 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
       changed = names.join('\n') !== savedInput.images.map(i => i.name).join('\n') ||
         fs.readFileSync(path.join(dir, 'notes.md'), 'utf8') !== fs.readFileSync(path.join(saved, 'notes.md'), 'utf8') || !sameReferences;
     }
+    const existingFile=path.join(dir,'existing-post.json'), existing=exists(existingFile)?json(existingFile):null;
+    const draftRemoteKeys=new Set((draft?.blocks||[]).filter(block=>block.type==='rich').flatMap(block=>(block.images||[]).map(image=>image.sourceKey)));
+    const remoteImages=existing?[...new Map(Object.values(existing.source.templates||{}).flatMap(template=>template.images||[]).filter(image=>draftRemoteKeys.has(image.sourceKey)).map(image=>[image.sourceKey,image])).values()]:[];
+    const coverIdentity=existing&&existing.source.coverUrl?remoteImageIdentity(existing.source.coverUrl,existing.identity.blogUrl):null;
+    const remoteCover=remoteImages.find(image=>remoteImageIdentity(image.stableUrl,existing.identity.blogUrl)===coverIdentity)||remoteImages[0]||null;
     return { id, title: meta.title || '', notes: fs.readFileSync(path.join(dir, 'notes.md'), 'utf8'), references, referenceReports, referenceRead:referenceReadStates.get(id) || {phase:'idle'},
       updatedAt: meta.updatedAt, images: imageNames(dir).map(name => ({ name, label: meta.labels?.[name] || name, url: `/api/jobs/${id}/images/${encodeURIComponent(name)}` })),
       draft, draftImages: savedInput?.images.map(i => ({ name: i.name, url: `/api/jobs/${id}/draft-images/${encodeURIComponent(i.name)}` })) || [],
@@ -103,9 +112,11 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
       analysis: saved && exists(path.join(saved, 'analysis.md')) ? fs.readFileSync(path.join(saved, 'analysis.md'), 'utf8') : '',
       generation: state, refinement: { ...(refinementStates.get(id) || (meta.refining ? { phase: 'error', message: '앱이 종료되어 글 다듬기가 중단됐습니다. 원문을 확인한 뒤 다시 시도해 주세요.' } : { phase: 'idle' })),
         canUndo: !!(draft && undo && !undo.undone && undo.afterDigest === draftDigest(saved)) }, changed, transfer: meta.transfer || null,
-      draftDigest: draft ? draftDigest(saved) : null, publication: publications.state(dir) };
+      draftDigest: draft ? draftDigest(saved) : null, publication: publications.state(dir), update:postUpdates.state(dir), existingPost:existing?{url:existing.identity.url,postId:existing.identity.postId,title:existing.source.title,publishedAt:existing.source.publishedAt,categoryPath:existing.source.categoryPath,coverUrl:existing.source.coverUrl,coverImageKey:remoteCover?.sourceKey||null,remoteImageCount:remoteImages.length,importedAt:existing.source.capturedAt,remoteDigest:existing.remoteDigest}:null };
   }
   const saveMeta = (dir, patch) => write(path.join(dir, 'app.json'), { ...metaFor(dir), ...patch, updatedAt: new Date().toISOString() });
+  const importMapFile=path.join(root,'library','imported-posts.json');
+  const importMap=()=>exists(importMapFile)?json(importMapFile):{};
   function prepare(id, allowEmptyImages = false) {
     readyJob(root, id, { allowEmptyImages });
     const prepared = prepareJob(root, id);
@@ -113,6 +124,9 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
     return prepared.directory;
   }
   function persistDraft(id, directory, draft, review = '', analysis = '', referenceReports, writingContext) {
+    const existingFile=path.join(jobDir(id),'existing-post.json');
+    if(exists(existingFile)) draft=normalizeImportedDraft(draft,json(existingFile).source);
+    else fail(!draft?.blocks?.some(block=>block?.type==='rich'),'원문 형식 블록은 기존 글 가져오기에서만 사용할 수 있습니다.');
     if (draft?.category != null) {
       try { draft.category = normalizeCategory(draft.category, c.blogUrl); }
       catch (error) { fail(false, error.message); }
@@ -217,6 +231,7 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
         categories = createCategories({ root, blogUrl: c.blogUrl, reader: categoryReader });
         writingPrompts = createWritingPrompts({ root, blogUrl: c.blogUrl });
         publications = createPublications({ adapter: publishAdapter, blogUrl: c.blogUrl, tocMode: c.tocMode });
+        postUpdates = createPostUpdates({ adapter:updateAdapter, blogUrl:c.blogUrl, fetchPublic, tocMode:c.tocMode });
         return sendJson(res, { blogUrl: c.blogUrl, blogConfigured: true, categories: categories.state(), writingPrompts: writingPrompts.state() });
       }
       if (route === '/api/writing-prompts' && req.method === 'GET') return sendJson(res, writingPrompts.state());
@@ -260,12 +275,36 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
       if (remote && accountBlogs) fail(accountBlogs.some(blog => blog.id === remote[1]), '로그인한 계정의 블로그를 선택해 주세요.', 409);
       if (remote && req.method === 'GET' && !remote[2]) return sendJson(res, library.read(remote[1]));
       if (remote && req.method === 'POST' && remote[2] === 'sync') return sendJson(res, await library.sync(remote[1]));
+      const importing=route.match(/^\/api\/blogs\/([a-z0-9-]+)\/import$/);
+      if(importing&&req.method==='POST') {
+        const body=await bodyJson(req);fail(active.size===0&&!importingPosts,'진행 중인 작업이 끝난 뒤 기존 글을 가져와 주세요.',409);importingPosts=true;
+        try {
+          const importBlogUrl=requireBlog(c.blogUrl),selected=new URL(importBlogUrl).hostname.split('.')[0];
+          fail(importing[1]===selected,'현재 연결한 블로그의 글만 작업실로 가져올 수 있습니다.',409);
+          if(accountBlogs)fail(accountBlogs.some(blog=>blog.id===selected),'로그인한 계정의 블로그를 먼저 선택해 주세요.',409);
+          const requested=normalizePostUrl(body.url,importBlogUrl),key=`${new URL(importBlogUrl).origin}|${requested}`,known=importMap()[key];
+          if(known){try{const existing=readJob(known);fail(existing.existingPost?.url===requested,'기존 글 연결 정보가 올바르지 않습니다.',409);return sendJson(res,{...existing,reused:true});}catch(error){if(error.status!==404)throw error;}}
+          const article=await library.article(selected,requested);
+          const raced=importMap()[key];if(raced){const existing=readJob(raced);return sendJson(res,{...existing,reused:true});}
+          let id=`edit-${selected}-${article.identity.postId||sha(article.identity.url).slice(0,12)}`.slice(0,80);
+          if(exists(path.join(inbox,id)))id=`edit-${selected}-${randomUUID().slice(0,12)}`;
+          newJob(root,id);const dir=jobDir(id);fs.writeFileSync(path.join(dir,'notes.md'),'');write(path.join(dir,'order.json'),[]);
+          const target={identity:article.identity,source:article.source,baseDraft:structuredClone(article.draft),remoteDigest:article.source.digest,importedAt:new Date().toISOString()};
+          write(path.join(dir,'existing-post.json'),target);
+          const matchedCategory=categories.state().items?.find(item=>item.blogUrl===article.identity.blogUrl&&JSON.stringify(item.path)===JSON.stringify(article.source.categoryPath));
+          if(matchedCategory)article.draft.category=matchedCategory;
+          const directory=prepare(id,true);persistDraft(id,directory,article.draft,'기존 공개 글에서 가져온 수정용 사본입니다. 원문 형식 블록은 문장만 편집하며 링크·강조·표 구조를 유지합니다.');
+          saveMeta(dir,{title:article.draft.title,directory,existingPost:true});
+          fs.mkdirSync(path.dirname(importMapFile),{recursive:true});write(importMapFile,{...importMap(),[key]:id});
+          return sendJson(res,{...readJob(id),reused:false},201);
+        } finally { importingPosts=false; }
+      }
       if (route === '/api/bootstrap' && req.method === 'GET') { await connectionCheck; return sendJson(res, {
-        token, blogUrl: c.blogUrl, blogConfigured: blogConfigured(c.blogUrl), tistory: accountState(), connected: ai.connected, ai, canPublish: !!publishAdapter, categories: categories.state(), writingPrompts: writingPrompts.state(),
+        token, blogUrl: c.blogUrl, blogConfigured: blogConfigured(c.blogUrl), tistory: accountState(), connected: ai.connected, ai, canPublish: !!publishAdapter, canUpdate:!!updateAdapter, categories: categories.state(), writingPrompts: writingPrompts.state(),
         style: exists(path.resolve(root, c.styleProfile)) ? fs.readFileSync(path.resolve(root, c.styleProfile), 'utf8') : ''
       }); }
       if (route === '/api/jobs' && req.method === 'GET') {
-        const jobs = listJobs(root).map(j => { const p = readJob(j.id); return { id: p.id, title: p.draft?.title || p.title || '새로운 개발 기록', updatedAt: p.updatedAt, imageCount: p.images.length, hasDraft: !!p.draft, phase: p.generation.phase, busy: active.has(j.id), storageBytes: jobStorage(root, [inbox, output], j.id).bytes }; });
+        const jobs = listJobs(root).map(j => { const p = readJob(j.id); return { id: p.id, title: p.draft?.title || p.title || '새로운 개발 기록', updatedAt: p.updatedAt, imageCount: p.images.length, hasDraft: !!p.draft, phase: p.generation.phase, busy: active.has(j.id), existingPost:p.existingPost||null, storageBytes: jobStorage(root, [inbox, output], j.id).bytes }; });
         return sendJson(res, jobs.sort((a,b) => b.updatedAt.localeCompare(a.updatedAt)));
       }
       if (route === '/api/jobs' && req.method === 'POST') {
@@ -279,13 +318,14 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
       if (match) {
         const id = decodeURIComponent(match[1]), action = match[2] || '', dir = jobDir(id);
         if (!action && req.method === 'GET') return sendJson(res, readJob(id));
-        if (req.method !== 'GET' && action !== 'publish') mutableJob(id);
+        if (req.method !== 'GET' && !['publish','update'].includes(action)) mutableJob(id);
         if (!action && req.method === 'DELETE') {
           const deletedBytes = deleteJobStorage(root, [inbox, output], id);
           generationStates.delete(id);
           return sendJson(res, { id, deletedBytes });
         }
         if (action === 'publish' && req.method === 'POST') {
+          fail(!readJob(id).existingPost,'기존 글 수정 작업은 “기존 글에 수정 반영”을 사용해 주세요.',409);
           requireBlog(c.blogUrl);
           if (accountBlogs) fail(accountBlogs.some(blog => blog.url === c.blogUrl), '로그인한 계정의 블로그를 먼저 선택해 주세요.', 409);
           if (publications.isRunning(dir) || publications.state(dir).phase === 'published') return sendJson(res,readJob(id));
@@ -298,6 +338,34 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
           publications.start({job:dir,directory,expectedDigest:b.draftDigest,onFinish:()=>active.delete(id)});
           active.add(id);
           return sendJson(res,readJob(id),202);
+        }
+        if(action==='update'&&req.method==='POST') {
+          requireBlog(c.blogUrl);
+          if(accountBlogs)fail(accountBlogs.some(blog=>blog.url===c.blogUrl),'로그인한 계정의 블로그를 먼저 선택해 주세요.',409);
+          if(postUpdates.isRunning(dir))return sendJson(res,readJob(id));
+          fail(active.size===0,'다른 글을 작성하거나 반영하고 있습니다. 완료 후 시도해 주세요.',409);
+          const b=await bodyJson(req);mutableJob(id);
+          const directory=savedDirectory(id,metaFor(dir));fail(directory&&exists(path.join(directory,'draft.json')),'먼저 수정한 글을 보관해 주세요.');
+          const previous=postUpdates.state(dir);if(previous.phase==='updated'&&previous.draftDigest===b.draftDigest)return sendJson(res,readJob(id));
+          postUpdates.start({job:dir,directory,expectedDigest:b.draftDigest,onFinish:()=>active.delete(id)});active.add(id);
+          return sendJson(res,readJob(id),202);
+        }
+        if(action==='reimport'&&req.method==='POST') {
+          fail(!active.size,'다른 작업이 끝난 뒤 원문을 다시 불러와 주세요.',409);mutableJob(id);
+          const targetFile=path.join(dir,'existing-post.json');fail(exists(targetFile),'기존 글 수정 작업이 아닙니다.',409);const target=json(targetFile);
+          fail(target.identity.blogUrl===new URL(c.blogUrl).origin,'현재 연결한 블로그의 원문만 다시 불러올 수 있습니다.',409);
+          active.add(id);
+          try{
+            const before=readJob(id),directory=savedDirectory(id,metaFor(dir));fail(before.draft&&directory,'보관한 수정본을 찾을 수 없습니다.',404);
+            const latest=await readPublicArticle(target.identity.url,target.identity.blogUrl,fetchPublic);
+            const backupDir=path.join(directory,'conflict-backups');fs.mkdirSync(backupDir,{recursive:true});const backup=path.join(backupDir,`${Date.now()}-${randomUUID().slice(0,8)}.json`);write(backup,{draft:before.draft,target,backedUpAt:new Date().toISOString()});
+            const base=target.baseDraft||before.draft, merged=mergeImportedDraft(base,before.draft,latest.draft);
+            const matched=categories.state().items?.find(item=>item.blogUrl===target.identity.blogUrl&&JSON.stringify(item.path)===JSON.stringify(latest.source.categoryPath));if(matched&&!merged.draft.category)merged.draft.category=matched;
+            write(targetFile,{...target,source:latest.source,baseDraft:structuredClone(latest.draft),remoteDigest:latest.source.digest,reimportedAt:new Date().toISOString(),lastConflictBackup:backup});
+            persistDraft(id,directory,merged.draft,before.review+`\n\n원문 다시 불러오기: 로컬 수정본을 ${path.basename(backup)}에 보관했습니다.${merged.conflicts.length?` 양쪽에서 바뀐 항목은 로컬 수정을 유지했습니다: ${merged.conflicts.join(', ')}`:''}`);
+            write(path.join(dir,'post-update.json'),{phase:'idle',message:merged.fullyMerged?'최신 원문과 로컬 수정본을 합쳤습니다. 내용을 확인한 뒤 다시 반영해 주세요.':'원문 구조가 달라 최신 원문을 불러왔습니다. 이전 로컬 수정본은 충돌 백업에 보관했습니다.',reimportedAt:new Date().toISOString(),conflicts:merged.conflicts,backup:path.basename(backup)});
+            return sendJson(res,readJob(id));
+          } finally {active.delete(id);}
         }
         if (!action && req.method === 'PUT') {
           const b = await bodyJson(req);
@@ -338,6 +406,31 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
           const base = action.startsWith('draft-images/') ? savedDirectory(id, metaFor(dir)) : dir;
           fail(base, '초안 사진을 찾을 수 없습니다.', 404);
           return sendFile(res, path.join(base, 'images', name));
+        }
+        if(action.startsWith('remote-images/')&&req.method==='GET') {
+          const key=decodeURIComponent(action.slice('remote-images/'.length));fail(/^[a-f0-9]{24}$/.test(key),'잘못된 원문 사진 주소입니다.');
+          const targetFile=path.join(dir,'existing-post.json');fail(exists(targetFile),'기존 글 원문을 찾을 수 없습니다.',404);
+          const target=json(targetFile), images=Object.values(target.source.templates||{}).flatMap(template=>template.images||[]), image=images.find(item=>item.sourceKey===key);
+          fail(image&&isAllowedRemoteImage(image.url,target.identity.blogUrl),'원문 사진을 찾을 수 없습니다.',404);
+          let imageUrl=image.url,response=await fetchPublic(imageUrl,{redirect:'manual',signal:AbortSignal.timeout(15000),headers:{Accept:'image/png,image/jpeg,image/webp'}});
+          if(!response.ok){const refreshed=await readPublicArticle(target.identity.url,target.identity.blogUrl,fetchPublic);const next=Object.values(refreshed.source.templates||{}).flatMap(template=>template.images||[]).find(item=>item.sourceKey===key);if(next){imageUrl=next.url;response=await fetchPublic(imageUrl,{redirect:'manual',signal:AbortSignal.timeout(15000),headers:{Accept:'image/png,image/jpeg,image/webp'}});}}
+          fail(response.ok&&!response.redirected,'원문 사진을 안전하게 가져오지 못했습니다.',502);const type=String(response.headers.get('content-type')||'').split(';')[0];
+          fail(['image/png','image/jpeg','image/webp','image/gif'].includes(type),'지원하지 않는 원문 사진 형식입니다.',415);
+          let size=0;const chunks=[];for await(const bytes of response.body){size+=bytes.length;fail(size<=12*1024*1024,'원문 사진이 너무 큽니다.',413);chunks.push(bytes);}
+          res.writeHead(200,{'Content-Type':type,'Content-Length':size,'Cache-Control':'private, max-age=300'});return res.end(Buffer.concat(chunks));
+        }
+        if(action.startsWith('rich-preview/')&&req.method==='GET') {
+          const key=decodeURIComponent(action.slice('rich-preview/'.length));fail(/^[a-f0-9]{20}$/.test(key),'잘못된 원문 미리보기 주소입니다.');
+          const saved=savedDirectory(id,metaFor(dir));fail(saved&&exists(path.join(saved,'draft.json')),'보관한 수정본을 찾을 수 없습니다.',404);
+          const block=json(path.join(saved,'draft.json')).blocks.find(item=>item?.type==='rich'&&item.templateKey===key);fail(block,'원문 형식 블록을 찾을 수 없습니다.',404);
+          const $preview=load(renderImportedRich(block),null,false);$preview('img').each((index,img)=>{const source=block.images?.[index];if(source)$preview(img).attr('src',`/api/jobs/${encodeURIComponent(id)}/remote-images/${source.sourceKey}`).removeAttr('srcset');else $preview(img).removeAttr('src srcset');});
+          const html=`<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'"><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;padding:0;color:#243b53;font-family:"Malgun Gothic","Apple SD Gothic Neo",sans-serif;font-size:16px;line-height:1.9;overflow-wrap:anywhere}img{max-width:100%;height:auto}table{max-width:100%;border-collapse:collapse}pre{white-space:pre-wrap;overflow-wrap:anywhere}</style></head><body>${$preview.html()}</body></html>`;
+          res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Content-Security-Policy':"default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'",'Cache-Control':'no-store'});return res.end(html);
+        }
+        if(action==='conflict-backup'&&req.method==='GET') {
+          const status=postUpdates.state(dir),name=status.backup;fail(typeof name==='string'&&/^\d+-[a-f0-9]{8}\.json$/.test(name),'확인할 이전 수정본이 없습니다.',404);
+          const saved=savedDirectory(id,metaFor(dir)),file=saved&&path.join(saved,'conflict-backups',name);fail(file&&exists(file)&&fs.lstatSync(file).isFile()&&!fs.lstatSync(file).isSymbolicLink(),'이전 수정본을 찾을 수 없습니다.',404);
+          const backup=json(file);return sendJson(res,{backedUpAt:backup.backedUpAt,draft:backup.draft});
         }
         if (action === 'references/read' && req.method === 'POST') {
           const references = readReferences(dir);
@@ -463,7 +556,7 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
       else res.end();
     }
   });
-  server.hasActiveGeneration = () => active.size > 0 || styles.isRunning() || categories.isRunning() || connectingTistory || checkingAI;
+  server.hasActiveGeneration = () => active.size > 0 || styles.isRunning() || categories.isRunning() || connectingTistory || checkingAI || importingPosts;
   return server;
 }
 

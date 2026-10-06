@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { load } from 'cheerio';
+import { normalizePostUrl, parsePublicArticle } from './existing-posts.mjs';
 
 const fail = message => { throw Object.assign(new Error(message), { status: 400 }); };
 const read = file => JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -54,8 +55,8 @@ function parseArticle(html, url) {
     summary: plain($('meta[property="og:description"]').attr('content') || '').slice(0, 450) };
 }
 
-async function publicText(url, fetcher) {
-  const res = await fetcher(url, { redirect: 'manual', signal: AbortSignal.timeout(15000), headers: { Accept: 'text/html, application/xml, text/xml' } });
+export async function publicText(url, fetcher) {
+  const res = await fetcher(url, { redirect: 'manual', signal: AbortSignal.timeout(15000), headers: { Accept: 'text/html, application/xml, text/xml', 'Cache-Control':'no-cache' } });
   if (!res.ok) throw new Error(`공개 자료를 가져오지 못했습니다 (${res.status}).`);
   let size = 0; const chunks = [];
   for await (const bytes of res.body) {
@@ -64,6 +65,11 @@ async function publicText(url, fetcher) {
     chunks.push(bytes);
   }
   return Buffer.concat(chunks).toString('utf8');
+}
+
+export async function readPublicArticle(url, blogUrl, fetcher = fetch) {
+  const target=normalizePostUrl(url,blogUrl);
+  return parsePublicArticle(await publicText(target,fetcher),target,blogUrl);
 }
 
 export function createLibrary(root, initialUrl, fetcher = fetch) {
@@ -112,7 +118,13 @@ export function createLibrary(root, initialUrl, fetcher = fetch) {
     write(catalog, list().map(b => b.id === id ? { ...b, title: data.title } : b));
     return data;
   }
-  return { list, add, read: cached, sync(id) {
+  return { list, add, read: cached, async article(id, input) {
+    const blog=get(id), url=normalizePostUrl(input,blog.url), known=cached(id).posts.some(post=>normalizePostUrl(post.url,blog.url)===url);
+    if (!known) fail('새로고침한 공개 글 목록에서 수정할 글을 찾지 못했습니다.');
+    const article=await readPublicArticle(url,blog.url,fetcher), metadata=cached(id).posts.find(post=>normalizePostUrl(post.url,blog.url)===url);
+    if(!article.source.publishedAt&&metadata?.publishedAt)article.source.publishedAt=metadata.publishedAt;
+    return article;
+  }, sync(id) {
     get(id);
     if (!pending.has(id)) pending.set(id, refresh(id).finally(() => pending.delete(id)));
     return pending.get(id);

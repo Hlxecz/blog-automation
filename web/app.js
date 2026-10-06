@@ -34,9 +34,9 @@ let deleting = false, draftSave = Promise.resolve(), categoryLoading = false, ca
 let blockDrag = null;
 let refineStarting = false, refineTimer;
 const refineSelection = new Set();
-const blockLabels = {paragraph:'문단',heading:'소제목',code:'코드',list:'목록',image:'사진',table:'비교 표'};
-const isPublishing = p => ['preparing','waiting_login','uploading','filling','submitting','verifying'].includes(p?.phase);
-const busy = (allowPublicationSave = false, allowRefineSave = false) => (!allowRefineSave && refineStarting) || current?.refinement?.phase === 'refining' || tistoryConnecting || categoryLoading || settings?.categories?.busy || referenceStarting || current?.referenceRead?.phase === 'reading' || deleting || uploadBusy || (!allowPublicationSave && publishStarting) || current?.generation.phase === 'generating' || isPublishing(current?.publication);
+const blockLabels = {paragraph:'문단',heading:'소제목',code:'코드',list:'목록',image:'사진',table:'비교 표',rich:'원문 형식'};
+const isPublishing = p => ['preparing','checking_remote','waiting_login','uploading','filling','submitting','verifying'].includes(p?.phase);
+const busy = (allowPublicationSave = false, allowRefineSave = false) => (!allowRefineSave && refineStarting) || current?.refinement?.phase === 'refining' || tistoryConnecting || categoryLoading || settings?.categories?.busy || referenceStarting || current?.referenceRead?.phase === 'reading' || deleting || uploadBusy || (!allowPublicationSave && publishStarting) || current?.generation.phase === 'generating' || isPublishing(current?.publication) || isPublishing(current?.update);
 
 async function api(url, options = {}) {
   const response = await fetch(url, { ...options, headers: { 'X-App-Token': token || '', ...(options.json !== undefined ? { 'Content-Type': 'application/json' } : {}), ...options.headers }, body: options.json !== undefined ? JSON.stringify(options.json) : options.body });
@@ -181,6 +181,7 @@ function renderCategories() {
   select.replaceChildren();
   for (const item of choices) select.add(new Option(categoryLabel(item, choices), item.id));
   select.value = '0';
+  if(current?.existingPost&&!selectedCategory&&!draft?.category){const original=current.existingPost.categoryPath?.join(' / ')||'원문 카테고리';const keep=new Option(`원문 유지: ${original}`,'original');keep.disabled=true;select.add(keep);select.value='original';}
   if (selectedCategory) {
     const found = choices.find(item => JSON.stringify(item) === JSON.stringify(selectedCategory));
     if (!found) {
@@ -245,7 +246,7 @@ async function saveMaterial(allowPublicationSave = false, allowRefineSave = fals
   if (!materialDirty || busy(allowPublicationSave, allowRefineSave)) return saveQueue;
   await ensureJob();
   const id = current.id, version = materialVersion;
-  const body = { title:$('topic').value, notes:$('notes').value, order:current.images.map(i => i.name), references:structuredClone(references), category: structuredClone(currentCategory()) };
+  const body = { title:$('topic').value, notes:$('notes').value, order:current.images.map(i => i.name), references:structuredClone(references), ...(current.existingPost&&!selectedCategory&&!draft?.category?{}:{category:structuredClone(currentCategory())}) };
   const task = saveQueue.catch(() => {}).then(() => api(`/api/jobs/${id}`, { method:'PUT', json:body }));
   saveQueue = task;
   const saved = await task;
@@ -368,6 +369,7 @@ async function selectJob(id) {
     if (current.refinement?.phase === 'refining') pollRefinement(id);
     if (current.referenceRead?.phase === 'reading') pollReferences(id);
     if (isPublishing(current.publication)) pollPublication(id);
+    if (isPublishing(current.update)) pollPublication(id);
   } finally { switching = false; updateControls(); }
 }
 async function newPost() {
@@ -556,15 +558,21 @@ function updateControls() {
   for (const id of ['choose-cover','upload-cover','reset-cover','cover-file-input']) $(id).disabled = running || !draft;
   $('delete-current').hidden = !current;
   $('delete-current').disabled = running || switching;
-  const publication=current?.publication;
-  $('transfer').disabled = running || !draft || !settings?.canPublish || !settings?.blogConfigured || ['published','uncertain'].includes(publication?.phase);
-  $('transfer').textContent = publication?.phase==='published' ? '발행 완료' : publication?.phase==='removed' ? '티스토리에 다시 발행 ↗' : isPublishing(publication) ? '티스토리에 올리는 중…' : '티스토리에 발행 ↗';
+  const existing=current?.existingPost, publication=existing?current?.update:current?.publication, capability=existing?settings?.canUpdate:settings?.canPublish;
+  $('existing-post-banner').hidden=!existing;
+  if(existing){$('existing-post-link').href=existing.url;$('existing-post-date').textContent=existing.publishedAt?` · ${new Date(existing.publishedAt).toLocaleString('ko-KR')} 공개`:'';}
+  $('transfer').disabled = running || !draft || !capability || !settings?.blogConfigured || publication?.phase==='uncertain' || (!existing&&publication?.phase==='published');
+  $('transfer').textContent = existing ? (isPublishing(publication)?'기존 글에 반영 중…':'기존 글에 수정 반영 ↗') : publication?.phase==='published' ? '발행 완료' : publication?.phase==='removed' ? '티스토리에 다시 발행 ↗' : isPublishing(publication) ? '티스토리에 올리는 중…' : '티스토리에 발행 ↗';
+  $('transfer-description').lastChild.textContent=existing?' 수정한 내용은 이 PC에 보관합니다. 반영을 누르면 원래 글만 업데이트합니다.':' 초안 보관은 이 PC에 저장합니다. 발행을 누르면 검토한 글과 사진을 티스토리에 공개합니다.';
   const publishStatus=$('publish-status'); publishStatus.replaceChildren();
   publishStatus.hidden=!draft && !publication?.message;
   if (!publishStatus.hidden) {
-    const p=document.createElement('span'); p.textContent=publication?.message || (settings?.canPublish ? `${settings.blogUrl} · 버튼을 누르면 현재 초안이 공개 발행됩니다.` : '바로 발행은 최신 Windows EXE 앱에서 사용할 수 있어요.'); publishStatus.append(p);
-    if (publication?.url) {const a=document.createElement('a');a.href=publication.url;a.textContent='발행한 글 보기 ↗';a.target='_blank';a.rel='noopener noreferrer';publishStatus.append(a);}
-    else if (publication?.phase==='uncertain') {const a=document.createElement('a');a.href=`${settings.blogUrl}/manage`;a.textContent='글 관리에서 확인 ↗';a.target='_blank';a.rel='noopener noreferrer';publishStatus.append(a);}
+    const p=document.createElement('span'); p.textContent=publication?.message || (capability ? existing?'초안 보관은 이 PC에만 저장됩니다. 버튼을 누르면 원래 글에 수정 내용을 반영합니다.':`${settings.blogUrl} · 버튼을 누르면 현재 초안이 공개 발행됩니다.` : existing?'기존 글 수정 반영은 최신 Windows 앱에서 사용할 수 있어요.':'바로 발행은 최신 Windows EXE 앱에서 사용할 수 있어요.'); publishStatus.append(p);
+    if (publication?.url) {const a=document.createElement('a');a.href=publication.url;a.textContent=existing?'수정한 원문 보기 ↗':'발행한 글 보기 ↗';a.target='_blank';a.rel='noopener noreferrer';publishStatus.append(a);}
+    else if (existing && publication?.phase==='stale') {const a=document.createElement('a');a.href=existing.url;a.textContent='변경된 원문 보기 ↗';a.target='_blank';a.rel='noopener noreferrer';publishStatus.append(a);}
+    else if (publication?.phase==='uncertain') {const a=document.createElement('a');a.href=existing?existing.url:`${settings.blogUrl}/manage`;a.textContent=existing?'원문에서 결과 확인 ↗':'글 관리에서 확인 ↗';a.target='_blank';a.rel='noopener noreferrer';publishStatus.append(a);}
+    if(existing&&['stale','uncertain'].includes(publication?.phase)){const refresh=document.createElement('button');refresh.className='text-button';refresh.textContent='원문 다시 불러오기';refresh.onclick=async()=>{if(busy())return;refresh.disabled=true;try{current=await api(`/api/jobs/${current.id}/reimport`,{method:'POST'});draft=structuredClone(current.draft);selectedCategory=structuredClone(current.category||null);mode='preview';renderDraft();toast(current.update.message);await refreshJobs();}catch(error){toast(error.message,true);}finally{refresh.disabled=false;}};publishStatus.append(refresh);}
+    if(existing&&publication?.backup){const backup=document.createElement('button');backup.className='text-button';backup.textContent='이전 로컬 수정본 보기';backup.onclick=async()=>{try{const saved=await api(`/api/jobs/${current.id}/conflict-backup`),box=document.createElement('div');box.className='conflict-backup';const intro=document.createElement('p');intro.textContent=`${new Date(saved.backedUpAt).toLocaleString('ko-KR')}에 보관한 수정본입니다. 필요한 문장을 복사해 현재 글에 옮길 수 있어요.`;const title=document.createElement('h3');title.textContent=saved.draft.title;const text=document.createElement('textarea');text.readOnly=true;text.rows=18;text.value=saved.draft.blocks.flatMap(block=>block.type==='list'?block.items:block.type==='table'?[block.headers.join(' | '),...block.rows.map(row=>row.join(' | '))]:block.type==='rich'?block.segments:[block.text||block.caption]).filter(Boolean).join('\n\n');box.append(intro,title,text);modal('이전 로컬 수정본',box);}catch(error){toast(error.message,true);}};publishStatus.append(backup);}
   }
   $('topic').disabled = running; $('notes').disabled = running; $('file-input').disabled = running;
   $('review-notes').disabled = running;
@@ -658,7 +666,7 @@ $('refine-undo').onclick = async () => {
   finally { refineStarting = false; updateControls(); }
 };
 function updateFooter() {
-  $('word-count').textContent = draft ? `${draft.blocks.reduce((n,b)=>n+(b.text||b.items?.join('')||b.caption||'').replace(/\s/g,'').length,0).toLocaleString()}자 · 사진 ${articleBlocks(draft).filter(b=>b.type==='image').length}장` : '사진과 글이 함께 표시됩니다';
+  $('word-count').textContent = draft ? `${draft.blocks.reduce((n,b)=>n+(b.segments?.join('')||b.text||b.items?.join('')||b.caption||'').replace(/\s/g,'').length,0).toLocaleString()}자 · 사진 ${articleBlocks(draft).filter(b=>b.type==='image').length+new Set(draft.blocks.filter(b=>b.type==='rich').flatMap(b=>(b.images||[]).map(image=>image.sourceKey))).size}장` : '사진과 글이 함께 표시됩니다';
 }
 const imageURL = name => (current?.draftImages.find(i=>i.name===name) || current?.coverImages?.find(i=>i.name===name) || current?.images.find(i=>i.name===name))?.url || '';
 function renderCover() {
@@ -667,9 +675,10 @@ function renderCover() {
   const name = draft.cover || draft.blocks.find(block=>block.type==='image')?.file;
   const preview = $('cover-preview'); preview.replaceChildren();
   if (name) { const img = document.createElement('img'); img.src = imageURL(name); img.alt = '선택한 글 표지'; preview.append(img); }
+  else if(current?.existingPost?.coverImageKey){const img=document.createElement('img');img.src=`/api/jobs/${encodeURIComponent(current.id)}/remote-images/${current.existingPost.coverImageKey}`;img.alt='기존 글 표지';preview.append(img);}
   else preview.textContent = '표지 없음';
-  $('cover-badge').textContent = draft.cover ? '직접 선택' : '자동';
-  $('cover-description').textContent = draft.cover ? '이 사진을 표지로 보관했어요.' : name ? '첫 번째 본문 사진을 사용해요.' : '글을 보여줄 표지 사진을 추가해 보세요.';
+  $('cover-badge').textContent = draft.cover ? '직접 선택' : current?.existingPost?.coverImageKey?'원문 표지':'자동';
+  $('cover-description').textContent = draft.cover ? '이 사진을 표지로 보관했어요.' : current?.existingPost?.coverImageKey?'기존 글의 대표 사진을 유지해요.':name ? '첫 번째 본문 사진을 사용해요.' : '글을 보여줄 표지 사진을 추가해 보세요.';
   $('reset-cover').hidden = !draft.cover;
 }
 async function changeCover(name, file) {
@@ -715,6 +724,11 @@ function renderPreview() {
   if (!draft) return;
   const content = renderArticleContent(articleBlocks(draft), { inlineStyles:false, imageURL, githubCard:draft.githubCard });
   $('article-preview').innerHTML = `<h1 class="hdev-title">${escape(draft.title)}</h1><div class="article-tags">${draft.tags.map(t=>`#${escape(t)}`).join(' &nbsp; ')}</div>${content}`;
+  for(const block of draft.blocks.filter(block=>block.type==='rich')){
+    const root=$('article-preview').querySelector(`[data-hdev-rich-source="${CSS.escape(block.templateKey)}"]`);
+    root?.querySelectorAll('img').forEach((img,index)=>{const source=block.images?.[index];if(source)img.src=`/api/jobs/${encodeURIComponent(current.id)}/remote-images/${source.sourceKey}`;else img.removeAttribute('src');img.removeAttribute('srcset');});
+    if(root){const frame=document.createElement('iframe');frame.className='rich-preview-frame';frame.setAttribute('sandbox','allow-same-origin');frame.title='원문 형식 미리보기';frame.src=`/api/jobs/${encodeURIComponent(current.id)}/rich-preview/${block.templateKey}`;frame.onload=()=>{try{frame.style.height=`${Math.max(120,frame.contentDocument.documentElement.scrollHeight+4)}px`;}catch{}};root.replaceWith(frame);}
+  }
 }
 $('github-card').onclick=()=>{
   if (!draft || busy() || switching) return;
@@ -834,7 +848,7 @@ function blockInsertGap(position) {
   gap.innerHTML=`<button type="button" class="block-insert-toggle" aria-label="${label}" aria-expanded="false" aria-controls="block-insert-${position}"><span aria-hidden="true">＋</span> 여기에 추가</button><div id="block-insert-${position}" class="block-insert-options" role="group" aria-label="추가할 내용" hidden></div>`;
   const toggle=gap.querySelector('button'), options=gap.querySelector('.block-insert-options');
   toggle.onclick=()=>{if(busy())return;const open=options.hidden;closeBlockInsertMenus();options.hidden=!open;toggle.setAttribute('aria-expanded',String(open));};
-  for (const [type,name] of Object.entries(blockLabels)) {
+  for (const [type,name] of Object.entries(blockLabels).filter(([type])=>type!=='rich')) {
     const button=document.createElement('button'); button.type='button'; button.dataset.blockType=type; button.textContent=name;
     button.onclick=()=>insertBlock(type,position); options.append(button);
   }
@@ -847,16 +861,46 @@ document.addEventListener('click',event=>{if(!event.target.closest('.block-inser
 $('block-editor').ondragleave=event=>{
   if (!$('block-editor').contains(event.relatedTarget)) $('block-editor').querySelectorAll('.drop-target').forEach(el=>el.classList.remove('drop-target'));
 };
+function renderExistingEditor(editor) {
+  const article=document.createElement('article');article.className='existing-source-editor';
+  const intro=document.createElement('div');intro.className='existing-source-intro';intro.innerHTML='<strong>원문 전체 편집</strong><p>목차 제목부터 다음 제목 전까지 한 칸에서 수정합니다. 미리보기에서 원래 서식과 사진 배치를 확인할 수 있어요.</p>';article.append(intro);
+  const sections=[];let section=null;
+  const addSection=title=>{if(section?.title===title)return;section={title,slots:[]};sections.push(section);};
+  const richHeadings=block=>{const labels=Array(block.segments.length).fill(null),template=document.createElement('template');template.innerHTML=block.template;let heading=null;const visit=node=>{if(node.nodeType===1&&/^H[2-4]$/.test(node.tagName))heading=node.textContent.replace(/\uE000HDEV_[a-f0-9]+_(\d+)\uE001/g,(_,number)=>block.segments[Number(number)]||'').trim()||heading;if(node.nodeType===3)for(const match of node.textContent.matchAll(/\uE000HDEV_[a-f0-9]+_(\d+)\uE001/g))labels[Number(match[1])]=heading;for(const child of node.childNodes)visit(child);};visit(template.content);return labels;};
+  addSection('본문 시작');
+  draft.blocks.forEach(block=>{
+    if(block.type==='heading')addSection(block.text);
+    if(block.type==='rich'){
+      const headings=richHeadings(block);
+      block.segments.forEach((_,segment)=>{if(headings[segment])addSection(headings[segment]);section.slots.push({get:()=>block.segments[segment],set:value=>{block.segments[segment]=value;}});});
+    }else if(block.type==='image'){
+      section.slots.push({get:()=>block.caption||'',set:value=>{block.caption=value;}});
+    }else{
+      section.slots.push({get:()=>block.type==='list'?block.items.join('\n'):block.type==='table'?[block.headers,...block.rows].map(row=>row.join('\t')).join('\n'):block.text||'',set:value=>{if(block.type==='list')block.items=value.split('\n');else if(block.type==='table'){const rows=value.split('\n').map(row=>row.split('\t'));block.headers=rows.shift();block.rows=rows;}else block.text=value;}});
+    }
+  });
+  for(const group of sections){
+    if(!group.slots.length)continue;
+    const panel=document.createElement('section');panel.className='existing-source-section';const title=document.createElement('h3');title.textContent=group.title;panel.append(title);
+    const boundary='\n\u2063\n';
+    const input=document.createElement('textarea');input.className='existing-section-text';input.setAttribute('aria-label',`${group.title} 전체 내용`);input.value=group.slots.map(slot=>slot.get()).join(boundary);input.rows=Math.max(10,Math.min(32,input.value.split('\n').length+2));
+    input.oninput=()=>{const parts=input.value.split(boundary);for(let i=0;i<group.slots.length;i++)group.slots[i].set(i===group.slots.length-1?parts.slice(i).join('\n\n'):parts[i]||'');markDraft();};
+    panel.append(input);article.append(panel);
+  }
+  editor.append(article,blockInsertGap(draft.blocks.length));
+  updateControls();
+}
 function renderEditor() {
   if (!draft) return;
   clearBlockDrag();
   $('draft-title').value=draft.title; $('draft-tags').value=draft.tags.join(', ');
   const editor=$('block-editor'); editor.replaceChildren();
+  if(current?.existingPost){renderExistingEditor(editor);return;}
   draft.blocks.forEach((b,index)=>{
     const el=document.createElement('div'); el.className='edit-block'; el.dataset.type=b.type;
     el.innerHTML=`<div class="edit-block-header"><span class="edit-block-label"><button type="button" class="block-drag-handle" draggable="true" aria-label="${index+1}번 ${blockLabels[b.type]} 끌어서 이동" title="끌어서 이동 · 위아래 방향키로도 이동할 수 있어요"><svg viewBox="0 0 12 18" width="12" height="18" fill="currentColor" aria-hidden="true"><circle cx="3" cy="3" r="1.5"/><circle cx="9" cy="3" r="1.5"/><circle cx="3" cy="9" r="1.5"/><circle cx="9" cy="9" r="1.5"/><circle cx="3" cy="15" r="1.5"/><circle cx="9" cy="15" r="1.5"/></svg></button>${blockLabels[b.type]}</span><span class="edit-block-actions"><button type="button" class="block-up" aria-label="블록 ${index+1} 위로 이동">↑</button><button type="button" class="block-down" aria-label="블록 ${index+1} 아래로 이동">↓</button><button type="button" class="block-remove" aria-label="블록 ${index+1} 삭제">×</button></span></div>`;
     const handle=el.querySelector('.block-drag-handle');
-    if (b.type !== 'code') {
+    if (b.type !== 'code' && b.type !== 'rich') {
       const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.className = 'block-refine-select';
       checkbox.setAttribute('aria-label', `${index+1}번 ${blockLabels[b.type]} 다듬기 선택`);
       checkbox.onchange = () => { if (checkbox.checked) refineSelection.add(b); else refineSelection.delete(b); updateRefinementControls(); };
@@ -884,6 +928,9 @@ function renderEditor() {
       for(const [field,label] of [['caption','사진 설명'],['alt','사진 대체 텍스트']]){
         const input=document.createElement('input'); input.className='image-caption'; input.value=b[field]||''; input.placeholder=label; input.setAttribute('aria-label',`${index+1}번 ${label}`); input.oninput=()=>{b[field]=input.value;markDraft();}; el.append(input);
       }
+    }else if(b.type==='rich'){
+      const details=document.createElement('details');details.className='rich-text-editor';const summary=document.createElement('summary');summary.textContent=`원문 문장 ${b.segments.length}개 편집`;details.append(summary);const note=document.createElement('p');note.className='rich-edit-note';note.textContent='링크·강조·표·사진 배치를 유지한 채 필요한 문장만 수정합니다.';details.append(note);
+      b.segments.forEach((value,segment)=>{const label=document.createElement('label');label.className='rich-segment';label.textContent=`${b.segmentLabels?.[segment]||'원문 문장'} ${segment+1} · ${value.slice(0,35)}`;const textarea=document.createElement('textarea');textarea.value=value;textarea.rows=Math.max(2,Math.min(8,value.split('\n').length+1));textarea.oninput=()=>{b.segments[segment]=textarea.value;markDraft();};label.append(textarea);details.append(label);});el.append(details);
     }else{
       const textarea=document.createElement('textarea'); textarea.setAttribute('aria-label',`${index+1}번 ${blockLabels[b.type]}`);
       textarea.value=b.type==='list'?b.items.join('\n'):b.type==='table'?[b.headers,...b.rows].map(row=>row.join('\t')).join('\n'):b.text;
@@ -905,7 +952,7 @@ function renderDraft() {
 $('draft-title').oninput=()=>{draft.title=$('draft-title').value;markDraft();};
 $('draft-tags').oninput=()=>{draft.tags=$('draft-tags').value.split(',').map(t=>t.trim().replace(/^#/, '')).filter(Boolean);markDraft();};
 $('review-notes').oninput=markDraft;
-$('edit-view').onclick=()=>{mode='edit';renderDraft();}; $('preview-view').onclick=()=>{mode='preview';renderDraft();};
+$('edit-view').onclick=()=>{mode='edit';renderDraft();}; $('preview-view').onclick=async()=>{try{await saveAll();mode='preview';renderDraft();}catch(error){toast(error.message,true);}};
 $('manual-start').onclick=async()=>{
   if (busy()) return;
   try{await ensureJob();await saveMaterial();draft={title:$('topic').value||'새로운 개발 기록',tags:[],category:structuredClone(currentCategory()),blocks:[{type:'paragraph',text:'이곳에 글을 직접 쓰거나 붙여넣어 주세요.'},...current.images.map(i=>({type:'image',file:i.name,alt:i.label,caption:''}))]};draftDirty=true;await saveAll();mode='edit';renderDraft();}catch(e){toast(e.message,true);}
@@ -929,12 +976,13 @@ function pollGeneration(id){
   },2500);
 }
 $('transfer').onclick=async()=>{
-  if(busy() || !draft || !settings?.canPublish)return;
-  if (!draft.category) { draft.category = structuredClone(currentCategory()); markDraft(); }
+  const existing=!!current?.existingPost;
+  if(busy() || !draft || !(existing?settings?.canUpdate:settings?.canPublish))return;
+  if (!existing && !draft.category) { draft.category = structuredClone(currentCategory()); markDraft(); }
   publishStarting=true;updateControls();
   try{
     await saveAll(true);
-    current=await api(`/api/jobs/${current.id}/publish`,{method:'POST',json:{draftDigest:current.draftDigest}});
+    current=await api(`/api/jobs/${current.id}/${existing?'update':'publish'}`,{method:'POST',json:{draftDigest:current.draftDigest}});
     pollPublication(current.id);
   }catch(e){toast(e.message,true);}finally{publishStarting=false;updateControls();}
 };
@@ -944,8 +992,9 @@ function pollPublication(id){
     try{
       const next=await api(`/api/jobs/${id}`);if(current?.id!==id)return;
       current=next;updateControls();
-      if(isPublishing(next.publication)){pollPublication(id);return;}
-      toast(next.publication.message || '발행 상태를 확인해 주세요.',next.publication.phase!=='published');
+      const state=next.existingPost?next.update:next.publication;
+      if(isPublishing(state)){pollPublication(id);return;}
+      toast(state.message || '반영 상태를 확인해 주세요.',!['published','updated'].includes(state.phase));
       await refreshJobs();
     }catch(e){toast(e.message,true);pollPublication(id);}
   },1800);
@@ -995,7 +1044,8 @@ function renderPublicPosts() {
   for (const post of posts) {
     const row = document.createElement('article'); row.className = 'public-post';
     const date = new Date(post.publishedAt), day = Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('ko-KR');
-    row.innerHTML = `<div class="post-monogram" aria-hidden="true">${escape((post.category.split('/').pop() || 'LOG').slice(0,3).toUpperCase())}</div><div class="post-info"><div class="post-meta"><span>${escape(post.category || '카테고리 없음')}</span><time>${escape(day)}</time></div><h2>${escape(post.title)}</h2><p>${escape(post.summary)}</p><small>${escape(post.url)}</small></div><a class="button secondary" href="${escape(post.url)}" target="_blank" rel="noopener noreferrer">글 열기 ↗</a>`;
+    row.innerHTML = `<div class="post-monogram" aria-hidden="true">${escape((post.category.split('/').pop() || 'LOG').slice(0,3).toUpperCase())}</div><div class="post-info"><div class="post-meta"><span>${escape(post.category || '카테고리 없음')}</span><time>${escape(day)}</time></div><h2>${escape(post.title)}</h2><p>${escape(post.summary)}</p><small>${escape(post.url)}</small></div><div class="post-actions"><a class="button secondary" href="${escape(post.url)}" target="_blank" rel="noopener noreferrer">글 열기 ↗</a><button class="button primary post-edit">작업실에서 수정</button></div>`;
+    row.querySelector('.post-edit').onclick=async()=>{if(busy()||libraryLoading)return;const button=row.querySelector('.post-edit');button.disabled=true;button.textContent='가져오는 중…';try{await saveAll();const imported=await api(`/api/blogs/${encodeURIComponent(library.id)}/import`,{method:'POST',json:{url:post.url}});await refreshJobs();await selectJob(imported.id);toast(imported.reused?'보관한 수정 작업을 이어서 열었어요.':'기존 글을 수정용 사본으로 가져왔어요.');}catch(error){toast(error.message,true);}finally{button.disabled=false;button.textContent='작업실에서 수정';}};
     box.append(row);
   }
 }

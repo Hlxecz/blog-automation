@@ -111,7 +111,11 @@ else {
       const { createTistoryCategoryReader } = await import(`./publish.mjs?categories=${randomUUID()}`);
       return createTistoryCategoryReader({ openWindow: openTistory })(request);
     };
-    server = createApp({ root: dataRoot, webRoot: path.join(bundle, 'web'), publishAdapter, categoryReader,
+    const updateAdapter = async request => {
+      const { createTistoryPostUpdater } = await import(`./publish.mjs?update=${randomUUID()}`);
+      return createTistoryPostUpdater({ openWindow: openTistory })(request);
+    };
+    server = createApp({ root: dataRoot, webRoot: path.join(bundle, 'web'), publishAdapter, updateAdapter, categoryReader,
       accountReader: createTistoryAccountReader({ openWindow: openTistory }) });
     await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
     origin = `http://127.0.0.1:${server.address().port}`;
