@@ -4,7 +4,7 @@ import path from 'node:path';
 import { createApp } from '../scripts/server.mjs';
 import { initializeData } from './data.mjs';
 import { randomUUID } from 'node:crypto';
-import { createTistoryAccountReader } from './account.mjs';
+import { createTistoryAccountReader, tistorySessionPartition } from './account.mjs';
 
 app.setName('H.Dev Studio');
 // Keep development windows and sessions independent from the installed EXE.
@@ -55,10 +55,10 @@ function protectNavigation(win, local = false) {
 function openTistory(url) {
   if (!tistoryUrl(url)) return;
   if (new URL(url).hostname === 'your-blog.tistory.com') { openBlogSettings(); return; }
-  // Separate in-memory browser session. No app preload or Node access is exposed to Tistory.
+  // Electron keeps this isolated browser session across app restarts in userData.
   const win = new BrowserWindow({ width: 1220, height: 900, minWidth: 800, minHeight: 620, title: '티스토리 · H.Dev Studio',
     icon: path.join(app.getAppPath(), 'desktop/assets/icon.png'),
-    webPreferences: { partition: 'tistory-session', sandbox: true, contextIsolation: true, nodeIntegration: false } });
+    webPreferences: { partition: tistorySessionPartition, sandbox: true, contextIsolation: true, nodeIntegration: false } });
   remoteWindows.add(win); win.on('closed', () => remoteWindows.delete(win));
   win.webContents.on('page-title-updated', event => { event.preventDefault(); win.setTitle(`${win.webContents.getTitle()} · 티스토리`); });
   protectNavigation(win);

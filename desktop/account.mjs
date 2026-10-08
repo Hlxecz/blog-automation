@@ -1,5 +1,6 @@
 // Read only the account's own blog list, observed at /member/blog on 2026-09-18.
 export const accountUrl = 'https://www.tistory.com/member/blog';
+export const tistorySessionPartition = 'persist:tistory-session';
 
 export function accountBlogsCommand() {
   if (!['www.tistory.com', 'tistory.com'].includes(location.hostname) || location.pathname !== '/member/blog') return null;

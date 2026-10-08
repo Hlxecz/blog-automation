@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { createApp } from '../scripts/server.mjs';
-import { createTistoryAccountReader, accountUrl } from '../desktop/account.mjs';
+import { createTistoryAccountReader, accountUrl, tistorySessionPartition } from '../desktop/account.mjs';
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hdev-account-ui-'));
 app.setPath('userData', path.join(root, 'electron')); app.on('window-all-closed', () => {});
@@ -19,6 +19,7 @@ const row = blog => `<li class="ac-li-blog"><a class="ac-li-item ac-item-thumb" 
 async function run() {
 try {
   await app.whenReady();
+  assert.equal(session.fromPartition(tistorySessionPartition).isPersistent(), true, '티스토리 로그인 세션은 앱 재시작 후에도 유지해야 합니다.');
   const isolated = session.fromPartition('account-fixture');
   await isolated.protocol.handle('https', request => {
     assert.equal(request.url, accountUrl);
