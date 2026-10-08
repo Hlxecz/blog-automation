@@ -10,10 +10,10 @@
 
 <p align="center">Windows x64 · Codex / Claude Code CLI · Tistory</p>
 
-개발 캡처와 메모를 분석해 초안을 만들고, 필요한 문단만 다듬어 검토한 뒤 티스토리에 발행하는 Windows 데스크톱 앱입니다.
+개발 캡처와 메모를 분석해 초안을 만들고, 필요한 문단만 다듬어 검토한 뒤 티스토리에 발행하는 Windows 데스크톱 앱입니다. 이미 발행한 글도 불러와 같은 주소에서 수정할 수 있습니다.
 
 <p align="center">
-  <a href="https://github.com/Hlxecz/blog-automation/releases/tag/v0.8.0"><strong>Windows 앱 다운로드</strong></a>
+  <a href="https://github.com/Hlxecz/blog-automation/releases/tag/v0.9.5"><strong>Windows 앱 다운로드</strong></a>
   · <a href="docs/FEATURES.md">기능과 실제 화면</a>
   · <a href="docs/USAGE.md">사용 안내</a>
   · <a href="CHANGELOG.md">변경 내역</a>
@@ -34,6 +34,8 @@
 - 문단·소제목·코드·사진·표의 드래그 이동과 중간 삽입
 - 자동 목차, 팁·주의 상자, 표지와 GitHub 정보 카드
 - 로그인한 티스토리 블로그·카테고리 연결과 공개 발행
+- 공개 글을 작업실로 불러와 원문 형식으로 미리보고 같은 글 주소에 수정 반영
+- 가져온 글을 로컬에서 삭제한 뒤에도 다시 가져오기, 앱 재실행 후 로그인 세션 재사용
 - 사진·초안·편집 이력을 이 PC에 보관
 
 ## 사용 흐름
@@ -43,11 +45,13 @@
 → 미리보기로 검토 → 티스토리에 발행
 ```
 
-처음 실행한 PC에서는 **티스토리 로그인**으로 발행할 블로그를 연결하고, **도움말 · AI 연결**에서 Codex 또는 Claude Code를 선택합니다. 자세한 순서는 [사용 안내](docs/USAGE.md)를 확인하세요.
+처음 실행한 PC에서는 **티스토리 로그인**으로 발행할 블로그를 연결하고, **도움말 · AI 연결**에서 Codex 또는 Claude Code를 선택합니다. 자세한 순서는 [사용 안내](docs/USAGE.md)와 [실제 블로그 사용 방법 글](https://hlxecz.tistory.com/30)을 확인하세요.
+
+이미 올린 글은 **티스토리 글 → 작업실에서 수정**으로 가져옵니다. 문장과 표·주의 상자를 확인하고 **기존 글에 수정 반영**을 누르면 새 글을 만들지 않고 원래 주소에 저장합니다. 로컬 보관함에서 삭제한 글은 다시 가져올 수 있습니다.
 
 ## 다운로드
 
-[H.Dev Studio 0.8.0](https://github.com/Hlxecz/blog-automation/releases/tag/v0.8.0)에서 `HDev-Studio-0.8.0-win-x64.exe`를 받습니다. Windows 64비트용 무설치 실행 파일입니다.
+[H.Dev Studio 0.9.5](https://github.com/Hlxecz/blog-automation/releases/tag/v0.9.5)에서 `HDev-Studio-0.9.5-win-x64.exe`를 받습니다. Windows 64비트용 무설치 실행 파일입니다.
 
 Windows에서 처음 받은 서명되지 않은 앱은 Microsoft Defender SmartScreen 안내가 나타날 수 있습니다. 배포 파일의 무결성은 Release에 함께 제공되는 `SHA256SUMS.txt`로 확인할 수 있습니다.
 
@@ -87,6 +91,7 @@ npm run test:categories
 npm run test:writing
 npm run test:account
 npm run test:refine
+npm run test:existing
 ```
 
 자동 검사는 임시 자료와 모의 편집기를 사용하며 실제 티스토리에 테스트 글을 발행하지 않습니다.
