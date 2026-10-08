@@ -174,7 +174,7 @@ export function parsePublicArticle(html, inputUrl, blogUrl) {
   const sourceHtml=sanitizeImportedHtml(body.html(),blogUrl);
   const coverUrl=$('meta[property="og:image"]').attr('content')||'';
   const sourceDigest=sha(JSON.stringify({title,publishedAt,categoryPath,tags:[...new Set(tags)].slice(0,10),coverUrl:stableRemoteUrl(coverUrl,blogUrl)||coverUrl,body:stableHtml(sourceHtml,blogUrl)}));
-  return {identity:{blogUrl:new URL(blogUrl).origin,url,postId:postId&&/^\d+$/.test(postId)?postId:null},source:{title,publishedAt,categoryPath,tags:[...new Set(tags)].slice(0,10),coverUrl,html:sourceHtml,rawHtml:body.html(),digest:sourceDigest,capturedAt:new Date().toISOString(),templates},draft:{title,tags:[...new Set(tags)].slice(0,10),blocks}};
+  return {identity:{blogUrl:new URL(blogUrl).origin,url,postId:postId&&/^\d+$/.test(postId)?postId:null},source:{title,publishedAt,categoryPath,tags:[...new Set(tags)].slice(0,10),tagsObserved:tagRoot.length>0,coverUrl,html:sourceHtml,rawHtml:body.html(),digest:sourceDigest,capturedAt:new Date().toISOString(),templates},draft:{title,tags:[...new Set(tags)].slice(0,10),blocks}};
 }
 
 export function normalizeImportedDraft(draft, source) {

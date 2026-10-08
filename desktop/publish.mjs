@@ -492,11 +492,11 @@ async function replaceEditorTags(session, tags) {
   if (JSON.stringify(actual) !== JSON.stringify(tags)) error('태그가 검토한 초안과 다릅니다. 저장하지 않았습니다.');
 }
 
-function updatedArticleEvidence(article, draft, uploaded, target, currentSource, publishedAtVerified) {
+function updatedArticleEvidence(article, draft, uploaded, target, currentSource, publishedAtVerified, expectedTags) {
   const compact = value => String(value || '').replace(/\s+/g, '');
   if (article.identity.url !== target.url || article.source.title.trim() !== draft.title.trim()) return null;
   if (currentSource.publishedAt && !publishedAtVerified) return null;
-  if (JSON.stringify([...article.source.tags].sort()) !== JSON.stringify([...draft.tags].sort())) return null;
+  if (article.source.tagsObserved && JSON.stringify([...article.source.tags].sort()) !== JSON.stringify([...expectedTags].sort())) return null;
   if (draft.category) {
     const expected = draft.category.id === '0' ? [] : draft.category.path;
     if (JSON.stringify(article.source.categoryPath) !== JSON.stringify(expected)) return null;
@@ -523,7 +523,7 @@ const sameInstant = (left, right) => {
   return Number.isFinite(a) && Number.isFinite(b) && a === b;
 };
 
-async function waitForUpdatedPost({ blogUrl, target, draft, uploaded, currentSource, expectedPublishedAt, fetchPublic, timeoutMs = 90000 }) {
+async function waitForUpdatedPost({ blogUrl, target, draft, uploaded, currentSource, expectedPublishedAt, expectedTags, fetchPublic, timeoutMs = 90000 }) {
   const deadline = Date.now() + timeoutMs;
   do {
     try {
@@ -540,7 +540,7 @@ async function waitForUpdatedPost({ blogUrl, target, draft, uploaded, currentSou
             publishedAtVerified = !!post && sameInstant(post.publishedAt, expected);
           }
         }
-        const evidence = updatedArticleEvidence(article, draft, uploaded, target, currentSource, publishedAtVerified);
+        const evidence = updatedArticleEvidence(article, draft, uploaded, target, currentSource, publishedAtVerified, expectedTags);
         if (evidence) return evidence;
       }
     } catch { /* The save is never repeated; keep verifying the one exact public URL. */ }
@@ -579,8 +579,12 @@ export function createTistoryPostUpdater({ openWindow, fetchPublic = fetch, onDr
       await until(() => evalEditor('ready'), '기존 글 편집기가 열리지 않았습니다.');
       const snapshot = await evalEditor('snapshot');
       if (snapshot.title.trim() !== currentSource.title.trim()) error('열린 편집기가 선택한 원문과 다릅니다. 저장하지 않았습니다.');
-      if (JSON.stringify(snapshot.tags) !== JSON.stringify(currentSource.tags || []))
-        error('열린 편집기의 태그가 불러온 원문과 다릅니다. 현재 스킨에서 태그를 확인할 수 없어 저장하지 않았습니다.');
+      const sourceTagsKnown = currentSource.tagsObserved === true || (currentSource.tagsObserved !== false && (currentSource.tags || []).length > 0);
+      if (sourceTagsKnown && JSON.stringify(snapshot.tags) !== JSON.stringify(currentSource.tags || []))
+        error('열린 편집기의 태그가 불러온 원문과 다릅니다. 저장하지 않았습니다.');
+      // A skin may hide tags on the public page. Keep the editor's tags unless
+      // the user explicitly entered tags in the imported draft.
+      const expectedTags = sourceTagsKnown || draft.tags.length ? draft.tags : snapshot.tags;
       const expectedRemote = currentSource.templates ? Object.values(currentSource.templates).flatMap(template => template.images || []).map(image => image.stableUrl) : [];
       const editorRemote = snapshot.images.map(image => stableRemoteUrl(image.dataUrl || image.src, origin)).filter(Boolean);
       if (expectedRemote.some(url => !editorRemote.includes(url))) error('열린 편집기의 사진이 선택한 원문과 다릅니다. 저장하지 않았습니다.');
@@ -590,7 +594,7 @@ export function createTistoryPostUpdater({ openWindow, fetchPublic = fetch, onDr
       onProgress('filling', '검토한 제목·본문·사진·태그를 기존 글 편집기에 적용하고 있어요.');
       const html = updatedPublicationHtml({ draft, manifest, uploadedMarkup, editorImages: snapshot.images, blogUrl: origin, includeToc });
       await evalEditor('fill', { title: draft.title, html });
-      await replaceEditorTags(session, draft.tags);
+      if (JSON.stringify(snapshot.tags) !== JSON.stringify(expectedTags)) await replaceEditorTags(session, expectedTags);
       await until(() => evalEditor('verify', { title: draft.title, html }), '편집기 내용이 검토한 수정본과 다릅니다. 저장하지 않았습니다.');
       await selectCategory(session, draft.category);
       await until(() => evalEditor('click', { id: 'publish-layer-btn', text: '완료' }), '저장 설정 버튼을 찾지 못했습니다.');
@@ -609,7 +613,7 @@ export function createTistoryPostUpdater({ openWindow, fetchPublic = fetch, onDr
         if (!await evalEditor('click', { id: 'publish-btn', text: '공개 발행' })) error('기존 글 저장 버튼을 누르지 못했습니다.');
       } catch { /* Navigation can win the executeJavaScript race after one successful click. */ }
       onProgress('verifying', '원래 글 주소에서 수정된 내용을 확인하고 있어요.');
-      const evidence = await waitForUpdatedPost({ blogUrl: origin, target, draft, uploaded, currentSource, expectedPublishedAt, fetchPublic });
+      const evidence = await waitForUpdatedPost({ blogUrl: origin, target, draft, uploaded, currentSource, expectedPublishedAt, expectedTags, fetchPublic });
       return { url: target.url, ...(target.postId ? { postId: target.postId } : {}), title: draft.title, verifiedAt: new Date().toISOString(), evidence, uploaded };
     } catch (err) {
       if (!submitted && !win.isDestroyed()) { win.setTitle(`기존 글 수정 중단 · ${err.message}`); win.show(); }

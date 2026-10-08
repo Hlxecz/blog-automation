@@ -723,12 +723,13 @@ $('reset-cover').onclick = () => changeCover(null);
 function renderPreview() {
   if (!draft) return;
   const content = renderArticleContent(articleBlocks(draft), { inlineStyles:false, imageURL, githubCard:draft.githubCard });
-  $('article-preview').innerHTML = `<h1 class="hdev-title">${escape(draft.title)}</h1><div class="article-tags">${draft.tags.map(t=>`#${escape(t)}`).join(' &nbsp; ')}</div>${content}`;
+  const template=document.createElement('template');
+  template.innerHTML = `<h1 class="hdev-title">${escape(draft.title)}</h1><div class="article-tags">${draft.tags.map(t=>`#${escape(t)}`).join(' &nbsp; ')}</div>${content}`;
   for(const block of draft.blocks.filter(block=>block.type==='rich')){
-    const root=$('article-preview').querySelector(`[data-hdev-rich-source="${CSS.escape(block.templateKey)}"]`);
+    const root=template.content.querySelector(`[data-hdev-rich-source="${CSS.escape(block.templateKey)}"]`);
     root?.querySelectorAll('img').forEach((img,index)=>{const source=block.images?.[index];if(source)img.src=`/api/jobs/${encodeURIComponent(current.id)}/remote-images/${source.sourceKey}`;else img.removeAttribute('src');img.removeAttribute('srcset');});
-    if(root){const frame=document.createElement('iframe');frame.className='rich-preview-frame';frame.setAttribute('sandbox','allow-same-origin');frame.title='원문 형식 미리보기';frame.src=`/api/jobs/${encodeURIComponent(current.id)}/rich-preview/${block.templateKey}`;frame.onload=()=>{try{frame.style.height=`${Math.max(120,frame.contentDocument.documentElement.scrollHeight+4)}px`;}catch{}};root.replaceWith(frame);}
   }
+  $('article-preview').replaceChildren(template.content);
 }
 $('github-card').onclick=()=>{
   if (!draft || busy() || switching) return;

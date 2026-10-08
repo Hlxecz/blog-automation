@@ -19,7 +19,7 @@ import { createPublications, draftDigest } from './publication.mjs';
 import { createPostUpdates, updateBusy } from './post-update.mjs';
 import { jobStorage, deleteJobStorage } from './storage.mjs';
 import { manifestImage, normalizeCategory } from '../web/draft-model.js';
-import { articleCss, normalizeGitHubCard, renderImportedRich } from '../web/article-renderer.js';
+import { articleCss, normalizeGitHubCard } from '../web/article-renderer.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const json = file => JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, ''));
@@ -418,14 +418,6 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
           fail(['image/png','image/jpeg','image/webp','image/gif'].includes(type),'지원하지 않는 원문 사진 형식입니다.',415);
           let size=0;const chunks=[];for await(const bytes of response.body){size+=bytes.length;fail(size<=12*1024*1024,'원문 사진이 너무 큽니다.',413);chunks.push(bytes);}
           res.writeHead(200,{'Content-Type':type,'Content-Length':size,'Cache-Control':'private, max-age=300'});return res.end(Buffer.concat(chunks));
-        }
-        if(action.startsWith('rich-preview/')&&req.method==='GET') {
-          const key=decodeURIComponent(action.slice('rich-preview/'.length));fail(/^[a-f0-9]{20}$/.test(key),'잘못된 원문 미리보기 주소입니다.');
-          const saved=savedDirectory(id,metaFor(dir));fail(saved&&exists(path.join(saved,'draft.json')),'보관한 수정본을 찾을 수 없습니다.',404);
-          const block=json(path.join(saved,'draft.json')).blocks.find(item=>item?.type==='rich'&&item.templateKey===key);fail(block,'원문 형식 블록을 찾을 수 없습니다.',404);
-          const $preview=load(renderImportedRich(block),null,false);$preview('img').each((index,img)=>{const source=block.images?.[index];if(source)$preview(img).attr('src',`/api/jobs/${encodeURIComponent(id)}/remote-images/${source.sourceKey}`).removeAttr('srcset');else $preview(img).removeAttr('src srcset');});
-          const html=`<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'"><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;padding:0;color:#243b53;font-family:"Malgun Gothic","Apple SD Gothic Neo",sans-serif;font-size:16px;line-height:1.9;overflow-wrap:anywhere}img{max-width:100%;height:auto}table{max-width:100%;border-collapse:collapse}pre{white-space:pre-wrap;overflow-wrap:anywhere}</style></head><body>${$preview.html()}</body></html>`;
-          res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Content-Security-Policy':"default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'",'Cache-Control':'no-store'});return res.end(html);
         }
         if(action==='conflict-backup'&&req.method==='GET') {
           const status=postUpdates.state(dir),name=status.backup;fail(typeof name==='string'&&/^\d+-[a-f0-9]{8}\.json$/.test(name),'확인할 이전 수정본이 없습니다.',404);

@@ -34,6 +34,7 @@ for (const block of draft.blocks.filter(block => block.type === 'rich')) {
 }
 const manifest = { images: [] };
 let omitDateMeta = false;
+let skinHidesTags = false;
 
 function managementPage() {
   return `<!doctype html><ul id="posts"><li><a href="/17">원문</a><a href="/manage/observed-edit">수정</a></li>
@@ -78,7 +79,8 @@ async function run() {
     if (url === `${origin}/rss`) return new Response(`<?xml version="1.0"?><rss><channel><title>fixture</title><item><title>수정한 제목</title><link>${targetUrl}</link><pubDate>${new Date(publishedAt).toUTCString()}</pubDate></item></channel></rss>`, { headers: { 'Content-Type': 'application/xml' } });
     assert.equal(url, targetUrl);
     const html = await win.webContents.executeJavaScript('window.published || null');
-    return new Response(html || publicPage({ body: originalBody }), { headers: { 'Content-Type': 'text/html' } });
+    const visible = html || publicPage({ body: originalBody });
+    return new Response(skinHidesTags ? visible.replace(/<div class="tags">[\s\S]*?<\/div>/, '') : visible, { headers: { 'Content-Type': 'text/html' } });
   };
   const request = { blogUrl: origin, draft, manifest, directory: root, target: imported.identity, currentSource: imported.source,
     onProgress: () => {}, includeToc: true };
@@ -99,6 +101,29 @@ async function run() {
     assert.match(saved, /바꾼 사진 설명/); assert.match(saved, /수정 &lt;값&gt; &amp; \$&amp;/);
     assert.equal((await win.webContents.executeJavaScript('document.getElementById("open20").checked')), true);
     win.destroy();
+
+    skinHidesTags = true;
+    const hidden = parsePublicArticle(publicPage({ body: originalBody }).replace(/<div class="tags">[\s\S]*?<\/div>/, ''), targetUrl, origin);
+    assert.equal(hidden.source.tagsObserved, false);
+    const legacySource = structuredClone(hidden.source);
+    delete legacySource.tagsObserved;
+    const hiddenDraft = structuredClone(hidden.draft);
+    hiddenDraft.title = '스킨에서 태그가 보이지 않는 글';
+    const hiddenResult = await updater({ ...request, draft: hiddenDraft, target: hidden.identity, currentSource: legacySource,
+      checkRemote: async () => hidden.source, beforeSubmit: () => {} });
+    assert.equal(hiddenResult.evidence.samePost, true);
+    assert.deepEqual(await win.webContents.executeJavaScript('[...document.querySelectorAll("#tags a")].map(a=>a.textContent)'), ['old']);
+    assert.equal(await win.webContents.executeJavaScript('window.submits'), 1);
+    win.destroy();
+
+    const changedTagsDraft = structuredClone(hiddenDraft);
+    changedTagsDraft.tags = ['new'];
+    const changedTags = await updater({ ...request, draft: changedTagsDraft, target: hidden.identity, currentSource: legacySource,
+      checkRemote: async () => hidden.source, beforeSubmit: () => {} });
+    assert.equal(changedTags.evidence.samePost, true);
+    assert.deepEqual(await win.webContents.executeJavaScript('[...document.querySelectorAll("#tags a")].map(a=>a.textContent)'), ['new']);
+    win.destroy();
+    skinHidesTags = false;
 
     panelPost = '18'; let wrongSubmitted = false;
     await assert.rejects(updater({ ...request, checkRemote: async () => assert.fail('wrong target must stop before remote recheck'), beforeSubmit: () => { wrongSubmitted = true; } }), /글 주소.*원문과 다릅/);

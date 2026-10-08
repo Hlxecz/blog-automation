@@ -25,7 +25,11 @@ async function run(){
     win=new BrowserWindow({show:false,width:1200,height:900,webPreferences:{offscreen:true,sandbox:true,nodeIntegration:false,contextIsolation:true}});
     const js=code=>win.webContents.executeJavaScript(code),pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
     const wait=async code=>{for(let i=0;i<100;i++){if(await js(code))return;await pause(50);}throw Error(`Timed out: ${code}`);};
-    await win.loadURL(origin);await wait(`!!document.querySelector('.recent-job')`);await js(`document.querySelector('.recent-job').click()`);await wait(`!!document.querySelector('#article-preview h1')`);await js(`document.querySelector('#edit-view').click()`);
+    await win.loadURL(origin);await wait(`!!document.querySelector('.recent-job')`);await js(`document.querySelector('.recent-job').click()`);await wait(`!!document.querySelector('#article-preview h1')`);
+    assert.equal(await js(`document.querySelectorAll('#article-preview iframe').length`),0);
+    assert.equal(await js(`document.querySelectorAll('#article-preview table tr').length`),3);
+    assert.equal(await js(`!!document.querySelector('#article-preview .hdev-warning')`),true);
+    await js(`document.querySelector('#edit-view').click()`);
     await wait(`document.querySelectorAll('.existing-source-section').length===2`);
     assert.equal(await js(`document.querySelector('#article-editor').hidden`),false);
     const before=await js(`[...document.querySelectorAll('.existing-source-section')].map(el=>({text:el.textContent,tableRows:el.querySelectorAll('table tr').length,warning:!!el.querySelector('.hdev-warning')}))`);
