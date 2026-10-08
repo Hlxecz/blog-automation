@@ -117,6 +117,11 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
   const saveMeta = (dir, patch) => write(path.join(dir, 'app.json'), { ...metaFor(dir), ...patch, updatedAt: new Date().toISOString() });
   const importMapFile=path.join(root,'library','imported-posts.json');
   const importMap=()=>exists(importMapFile)?json(importMapFile):{};
+  const importedJob=(key,url)=>{
+    const id=importMap()[key];if(!id)return null;
+    try {const job=readJob(id);fail(job.existingPost?.url===url,'기존 글 연결 정보가 올바르지 않습니다.',409);return job;}
+    catch(error){if(error.status===404)return null;throw error;}
+  };
   function prepare(id, allowEmptyImages = false) {
     readyJob(root, id, { allowEmptyImages });
     const prepared = prepareJob(root, id);
@@ -282,10 +287,10 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
           const importBlogUrl=requireBlog(c.blogUrl),selected=new URL(importBlogUrl).hostname.split('.')[0];
           fail(importing[1]===selected,'현재 연결한 블로그의 글만 작업실로 가져올 수 있습니다.',409);
           if(accountBlogs)fail(accountBlogs.some(blog=>blog.id===selected),'로그인한 계정의 블로그를 먼저 선택해 주세요.',409);
-          const requested=normalizePostUrl(body.url,importBlogUrl),key=`${new URL(importBlogUrl).origin}|${requested}`,known=importMap()[key];
-          if(known){try{const existing=readJob(known);fail(existing.existingPost?.url===requested,'기존 글 연결 정보가 올바르지 않습니다.',409);return sendJson(res,{...existing,reused:true});}catch(error){if(error.status!==404)throw error;}}
+          const requested=normalizePostUrl(body.url,importBlogUrl),key=`${new URL(importBlogUrl).origin}|${requested}`,known=importedJob(key,requested);
+          if(known)return sendJson(res,{...known,reused:true});
           const article=await library.article(selected,requested);
-          const raced=importMap()[key];if(raced){const existing=readJob(raced);return sendJson(res,{...existing,reused:true});}
+          const raced=importedJob(key,requested);if(raced)return sendJson(res,{...raced,reused:true});
           let id=`edit-${selected}-${article.identity.postId||sha(article.identity.url).slice(0,12)}`.slice(0,80);
           if(exists(path.join(inbox,id)))id=`edit-${selected}-${randomUUID().slice(0,12)}`;
           newJob(root,id);const dir=jobDir(id);fs.writeFileSync(path.join(dir,'notes.md'),'');write(path.join(dir,'order.json'),[]);
@@ -321,6 +326,10 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
         if (req.method !== 'GET' && !['publish','update'].includes(action)) mutableJob(id);
         if (!action && req.method === 'DELETE') {
           const deletedBytes = deleteJobStorage(root, [inbox, output], id);
+          if(exists(importMapFile)){
+            const previous=importMap(),next=Object.fromEntries(Object.entries(previous).filter(([,mapped])=>mapped!==id));
+            if(Object.keys(next).length!==Object.keys(previous).length)write(importMapFile,next);
+          }
           generationStates.delete(id);
           return sendJson(res, { id, deletedBytes });
         }

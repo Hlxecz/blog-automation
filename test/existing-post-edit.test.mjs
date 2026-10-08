@@ -60,6 +60,20 @@ async function appFixture(t,{adapter}={}) {
 
 const waitState=async(request,id,states)=>{for(let i=0;i<80;i++){const job=(await request(`/api/jobs/${id}`)).data;if(states.includes(job.update.phase))return job;await new Promise(resolve=>setTimeout(resolve,10));}throw new Error('update did not settle');};
 
+test('deleted imported posts can be imported again, including with an old stale import record',async t=>{
+  const {root,request}=await appFixture(t);
+  const route='/api/blogs/example/import',key=`${origin}|${postUrl}`,mapFile=path.join(root,'library','imported-posts.json');
+  const first=await request(route,'POST',{url:postUrl});assert.equal(first.status,201);
+  assert.equal(JSON.parse(fs.readFileSync(mapFile))[key],first.data.id);
+  assert.equal((await request(`/api/jobs/${first.data.id}`,'DELETE')).status,200);
+  assert.equal(JSON.parse(fs.readFileSync(mapFile))[key],undefined);
+  const second=await request(route,'POST',{url:postUrl});assert.equal(second.status,201);assert.equal(second.data.reused,false);
+  assert.equal((await request(`/api/jobs/${second.data.id}`,'DELETE')).status,200);
+  fs.writeFileSync(mapFile,JSON.stringify({[key]:second.data.id}));
+  const recovered=await request(route,'POST',{url:postUrl});assert.equal(recovered.status,201);assert.equal(recovered.data.reused,false);
+  assert.equal(JSON.parse(fs.readFileSync(mapFile))[key],recovered.data.id);
+});
+
 test('server imports once, reopens offline without overwriting edits, rejects other targets and applies repeated revisions to the same URL',async t=>{
   let calls=0;
   const adapter=(getHtml,setHtml)=>async({draft,target,beforeSubmit,checkRemote})=>{calls++;assert.equal(target.url,postUrl);await checkRemote();beforeSubmit();const replacement=draft.blocks.flatMap(block=>block.segments||[]).find(value=>value.startsWith('수정 문장'))||'기존 문장';setHtml(getHtml().replace(/(?:기존|수정) 문장/,replacement));return {url:postUrl,postId:'17',title:draft.title,verifiedAt:new Date().toISOString(),evidence:{public:true,body:true,images:true,samePost:true},uploaded:{}};};
