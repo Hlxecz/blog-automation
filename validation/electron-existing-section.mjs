@@ -12,8 +12,8 @@ app.on('window-all-closed',()=>{});
 fs.writeFileSync(path.join(root,'tistory.config.json'),JSON.stringify({blogUrl:'https://example.tistory.com',inbox:'inbox',output:'drafts',styleSamples:'style',styleProfile:'style.md'}));
 fs.writeFileSync(path.join(root,'style.md'),'말투');
 const post='https://example.tistory.com/17';
-const page=`<html><head><meta property="og:title" content="Exa 사용법"></head><body><article id="article"><div class="tt_article_useless_p_margin contents_style"><div class="contents"><h2>PART 1. Exa가 뭔지</h2><p>첫 문단입니다.</p><p>두 번째 문단에는 <a href="https://exa.ai/">공식 링크</a>가 있습니다.</p><h2>PART 2. 설치 방법</h2><p>설치 설명입니다.</p></div></div></article></body></html>`;
-const fetchPublic=async url=>{const value=String(url);if(value.endsWith('/rss'))return new Response(`<rss><channel><title>Example</title><item><title>Exa 사용법</title><link>${post}</link></item></channel></rss>`);if(value.endsWith('/sitemap.xml'))return new Response(`<urlset><url><loc>${post}</loc></url></urlset>`);if(value===post)return new Response(page);throw Error(value);};
+const page=`<html><head><meta property="og:title" content="Aside 사용법"></head><body><article id="article"><div class="tt_article_useless_p_margin contents_style"><div class="contents"><h2>3. 무료 플랜과 크레딧</h2><p>첫 문단입니다.</p><p>두 번째 문단에는 <a href="https://exa.ai/">공식 링크</a>가 있습니다.</p><table><tbody><tr><td>요금제</td><td>가격</td><td>사용량</td></tr><tr><td>Free</td><td>무료</td><td>월 500크레딧</td></tr><tr><td>Pro</td><td>월 <b>$20</b></td><td>무료의 3배</td></tr></tbody></table><div class="hdev-callout hdev-warning"><p class="hdev-callout-title">⚠️ 주의 | 크레딧 소비량</p><p class="hdev-callout-body">작은 작업으로 먼저 확인합니다.</p></div><h2>4. 설치 방법</h2><p>설치 설명입니다.</p></div></div></article></body></html>`;
+const fetchPublic=async url=>{const value=String(url);if(value.endsWith('/rss'))return new Response(`<rss><channel><title>Example</title><item><title>Aside 사용법</title><link>${post}</link></item></channel></rss>`);if(value.endsWith('/sitemap.xml'))return new Response(`<urlset><url><loc>${post}</loc></url></urlset>`);if(value===post)return new Response(page);throw Error(value);};
 const server=createApp({root,checkGenerator:async()=>true,fetchPublic});
 let win;
 async function run(){
@@ -26,17 +26,24 @@ async function run(){
     const js=code=>win.webContents.executeJavaScript(code),pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
     const wait=async code=>{for(let i=0;i<100;i++){if(await js(code))return;await pause(50);}throw Error(`Timed out: ${code}`);};
     await win.loadURL(origin);await wait(`!!document.querySelector('.recent-job')`);await js(`document.querySelector('.recent-job').click()`);await wait(`!!document.querySelector('#article-preview h1')`);await js(`document.querySelector('#edit-view').click()`);
-    await wait(`document.querySelectorAll('.existing-section-text').length===2`);
+    await wait(`document.querySelectorAll('.existing-source-section').length===2`);
     assert.equal(await js(`document.querySelector('#article-editor').hidden`),false);
-    const before=await js(`[...document.querySelectorAll('.existing-section-text')].map(el=>({title:el.previousSibling.textContent,text:el.value}))`);
-    assert.match(before[0].title,/PART 1/);assert.match(before[0].text,/첫 문단입니다/);assert.match(before[0].text,/두 번째 문단/);
-    assert.match(before[1].title,/PART 2/);assert.match(before[1].text,/설치 설명/);
-    await js(`{const el=document.querySelector('.existing-section-text');el.value=el.value.replace('첫 문단입니다.','첫 문단을 수정했습니다.\\n\\n추가 문단입니다.');el.dispatchEvent(new Event('input',{bubbles:true}));}`);
+    const before=await js(`[...document.querySelectorAll('.existing-source-section')].map(el=>({text:el.textContent,tableRows:el.querySelectorAll('table tr').length,warning:!!el.querySelector('.hdev-warning')}))`);
+    assert.match(before[0].text,/3\. 무료 플랜/);assert.match(before[0].text,/월 \$20/);assert.equal(before[0].tableRows,3);assert.equal(before[0].warning,true);
+    assert.equal(await js(`getComputedStyle(document.querySelector('.hdev-warning')).backgroundColor`),'rgb(255, 248, 237)');
+    assert.match(before[1].text,/4\. 설치 방법/);assert.match(before[1].text,/설치 설명/);
+    assert.equal(await js(`document.querySelector('.existing-source-editor').textContent.includes('\\u2063')`),false);
+    assert.equal(await js(`document.querySelectorAll('.existing-section-text').length`),0);
+    assert.equal(await js(`document.querySelector('.existing-editable').getAttribute('contenteditable')`),'plaintext-only');
+    await js(`{const cell=[...document.querySelectorAll('.existing-source-section td')].find(el=>el.textContent.includes('$20'));const price=[...cell.querySelectorAll('.existing-editable')].find(el=>el.textContent==='$20');price.textContent='$25';price.dispatchEvent(new Event('input',{bubbles:true}));const warning=document.querySelector('.hdev-callout-body .existing-editable');warning.textContent='작은 작업으로 먼저 확인하고 기록합니다.';warning.dispatchEvent(new Event('input',{bubbles:true}));}`);
     await js(`document.querySelector('#save-all').click()`);await wait(`document.querySelector('#save-state').textContent==='이 PC에 보관됨'`);
     const saved=(await request(`/api/jobs/${imported.id}`)).draft;
-    assert.ok(saved.blocks.some(block=>block.segments?.includes('첫 문단을 수정했습니다.\n\n추가 문단입니다.')));
-    assert.match(saved.blocks.filter(block=>block.type==='rich').map(renderRichBlock).join(''),/href="https:\/\/exa.ai\/"/);
-    console.log('PASS: one editable box per original heading section; saved text and link retained. No real Tistory requests.');
+    const rendered=saved.blocks.filter(block=>block.type==='rich').map(renderRichBlock).join('');
+    assert.match(rendered,/href="https:\/\/exa.ai\/"/);assert.match(rendered,/<table>/);assert.match(rendered,/월 <b>\$25<\/b>/);assert.match(rendered,/hdev-callout-body/);assert.match(rendered,/작은 작업으로 먼저 확인하고 기록합니다/);
+    assert.match(rendered,/월 500크레딧/);assert.match(rendered,/설치 설명입니다/);assert.doesNotMatch(rendered,/\u2063/);
+    await win.reload();await wait(`document.querySelectorAll('.existing-source-section').length===2`);
+    assert.match(await js(`document.querySelector('.existing-source-section').textContent`),/월 \$25/);
+    console.log('PASS: original heading sections render editable paragraphs, table cells and warning box without hidden separators; edits save and reopen with URL, link and other cells intact. No real Tistory requests.');
     win.destroy();server.closeAllConnections();server.close();app.exit(0);
   }catch(error){console.error(error);win?.destroy();server.closeAllConnections();server.close();app.exit(1);}
 }

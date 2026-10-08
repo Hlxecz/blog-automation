@@ -862,31 +862,35 @@ $('block-editor').ondragleave=event=>{
   if (!$('block-editor').contains(event.relatedTarget)) $('block-editor').querySelectorAll('.drop-target').forEach(el=>el.classList.remove('drop-target'));
 };
 function renderExistingEditor(editor) {
-  const article=document.createElement('article');article.className='existing-source-editor';
-  const intro=document.createElement('div');intro.className='existing-source-intro';intro.innerHTML='<strong>원문 전체 편집</strong><p>목차 제목부터 다음 제목 전까지 한 칸에서 수정합니다. 미리보기에서 원래 서식과 사진 배치를 확인할 수 있어요.</p>';article.append(intro);
-  const sections=[];let section=null;
-  const addSection=title=>{if(section?.title===title)return;section={title,slots:[]};sections.push(section);};
-  const richHeadings=block=>{const labels=Array(block.segments.length).fill(null),template=document.createElement('template');template.innerHTML=block.template;let heading=null;const visit=node=>{if(node.nodeType===1&&/^H[2-4]$/.test(node.tagName))heading=node.textContent.replace(/\uE000HDEV_[a-f0-9]+_(\d+)\uE001/g,(_,number)=>block.segments[Number(number)]||'').trim()||heading;if(node.nodeType===3)for(const match of node.textContent.matchAll(/\uE000HDEV_[a-f0-9]+_(\d+)\uE001/g))labels[Number(match[1])]=heading;for(const child of node.childNodes)visit(child);};visit(template.content);return labels;};
+  const article=document.createElement('article');article.className='existing-source-editor hdev-article';
+  const intro=document.createElement('div');intro.className='existing-source-intro';intro.innerHTML='<strong>원문 편집</strong><p>문단·표·주의 상자의 글자를 눌러 수정하세요. 형식과 사진은 유지되며, 수정 반영 시 같은 글 주소에 저장됩니다.</p>';article.append(intro);
+  let section;
+  const addSection=title=>{const panel=document.createElement('section');panel.className='existing-source-section';panel.setAttribute('aria-label',`${title} 편집`);if(title==='본문 시작'){const label=document.createElement('h3');label.textContent=title;panel.append(label);}const content=document.createElement('div');content.className='existing-section-content';panel.append(content);article.append(panel);section={content,wrappers:new WeakMap()};};
+  const editable=(value,set,label)=>{const span=document.createElement('span');span.className='existing-editable';span.contentEditable='plaintext-only';span.setAttribute('role','textbox');span.setAttribute('aria-label',label);span.textContent=value||'';span.oninput=()=>{set(span.innerText.replace(/\r/g,''));markDraft();};return span;};
+  const append=(node,ancestors=[])=>{let parent=section.content;for(const ancestor of ancestors){let copy=section.wrappers.get(ancestor);if(!copy){copy=ancestor.cloneNode(false);copy.removeAttribute('id');parent.append(copy);section.wrappers.set(ancestor,copy);}parent=copy;}parent.append(node);};
+  const place=(node,ancestors=[])=>{if(node.nodeType===3&&!node.textContent.trim()&&!section.content.textContent.trim())return;if(node.nodeType===1&&/^H[2-4]$/.test(node.tagName)){addSection(node.textContent.trim());append(node,ancestors);}else if(node.nodeType===1&&node.querySelector('h2,h3,h4')){for(const child of [...node.childNodes])place(child,[...ancestors,node]);}else append(node,ancestors);};
   addSection('본문 시작');
   draft.blocks.forEach(block=>{
-    if(block.type==='heading')addSection(block.text);
     if(block.type==='rich'){
-      const headings=richHeadings(block);
-      block.segments.forEach((_,segment)=>{if(headings[segment])addSection(headings[segment]);section.slots.push({get:()=>block.segments[segment],set:value=>{block.segments[segment]=value;}});});
+      const template=document.createElement('template');template.innerHTML=block.template;
+      const walker=document.createTreeWalker(template.content,NodeFilter.SHOW_TEXT),nodes=[];while(walker.nextNode())nodes.push(walker.currentNode);
+      for(const node of nodes){if(!node.textContent.includes('\uE000HDEV_'))continue;const parts=document.createDocumentFragment(),pattern=/\uE000HDEV_[a-f0-9]+_(\d+)\uE001/g;let last=0,match;while((match=pattern.exec(node.textContent))){parts.append(document.createTextNode(node.textContent.slice(last,match.index)));const index=Number(match[1]);parts.append(editable(block.segments[index],value=>{block.segments[index]=value;},block.segmentLabels?.[index]||'원문 문장'));last=pattern.lastIndex;}parts.append(document.createTextNode(node.textContent.slice(last)));node.replaceWith(parts);}
+      template.content.querySelectorAll('img').forEach((img,index)=>{const source=block.images?.[index];if(source)img.src=`/api/jobs/${encodeURIComponent(current.id)}/remote-images/${source.sourceKey}`;else img.removeAttribute('src');img.removeAttribute('srcset');});
+      for(const node of [...template.content.childNodes])place(node);
+    }else if(block.type==='heading'){
+      const heading=document.createElement('h2');heading.append(editable(block.text,value=>{block.text=value;},'소제목'));place(heading);
+    }else if(block.type==='paragraph'||block.type==='code'){
+      const element=document.createElement(block.type==='code'?'pre':'p');element.append(editable(block.text,value=>{block.text=value;},block.type==='code'?'코드':'문단'));append(element);
+    }else if(block.type==='list'){
+      const list=document.createElement('ul');block.items.forEach((item,index)=>{const li=document.createElement('li');li.append(editable(item,value=>{block.items[index]=value;},`목록 ${index+1}`));list.append(li);});append(list);
+    }else if(block.type==='table'){
+      const table=document.createElement('table');for(const [rowIndex,row] of [block.headers,...block.rows].entries()){const tr=document.createElement('tr');row.forEach((value,column)=>{const cell=document.createElement(rowIndex?'td':'th');cell.append(editable(value,next=>{(rowIndex?block.rows[rowIndex-1]:block.headers)[column]=next;},`표 ${rowIndex+1}행 ${column+1}열`));tr.append(cell);});table.append(tr);}append(table);
     }else if(block.type==='image'){
-      section.slots.push({get:()=>block.caption||'',set:value=>{block.caption=value;}});
-    }else{
-      section.slots.push({get:()=>block.type==='list'?block.items.join('\n'):block.type==='table'?[block.headers,...block.rows].map(row=>row.join('\t')).join('\n'):block.text||'',set:value=>{if(block.type==='list')block.items=value.split('\n');else if(block.type==='table'){const rows=value.split('\n').map(row=>row.split('\t'));block.headers=rows.shift();block.rows=rows;}else block.text=value;}});
+      const figure=document.createElement('figure'),img=document.createElement('img');img.src=imageURL(block.file);img.alt=block.alt||'';figure.append(img);const caption=document.createElement('figcaption');caption.append(editable(block.caption,value=>{block.caption=value;},'사진 설명'));figure.append(caption);append(figure);
     }
   });
-  for(const group of sections){
-    if(!group.slots.length)continue;
-    const panel=document.createElement('section');panel.className='existing-source-section';const title=document.createElement('h3');title.textContent=group.title;panel.append(title);
-    const boundary='\n\u2063\n';
-    const input=document.createElement('textarea');input.className='existing-section-text';input.setAttribute('aria-label',`${group.title} 전체 내용`);input.value=group.slots.map(slot=>slot.get()).join(boundary);input.rows=Math.max(10,Math.min(32,input.value.split('\n').length+2));
-    input.oninput=()=>{const parts=input.value.split(boundary);for(let i=0;i<group.slots.length;i++)group.slots[i].set(i===group.slots.length-1?parts.slice(i).join('\n\n'):parts[i]||'');markDraft();};
-    panel.append(input);article.append(panel);
-  }
+  article.onclick=event=>{if(event.target.closest('a'))event.preventDefault();};
+  article.querySelectorAll('.existing-source-section').forEach(panel=>{if(!panel.querySelector('.existing-section-content').childNodes.length)panel.remove();});
   editor.append(article,blockInsertGap(draft.blocks.length));
   updateControls();
 }
