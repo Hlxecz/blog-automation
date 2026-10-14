@@ -6,11 +6,13 @@
 
 ## [0.10.0] - 2026-10-14
 
+- 공통 기능 코드를 유지하며 Windows·macOS 실행/빌드 스크립트, 설정과 안내를 `windows/`·`macos/`로 분리합니다. 빌드 결과와 체크섬도 `dist/<버전>/windows/`·`dist/<버전>/macos/`에 따로 보관합니다. README에 공통 소스 구조와 운영체제별 사용법을 반영합니다.
+
 - Windows와 같은 작업실·AI 초안·부분 다듬기·티스토리 로그인·사진 발행·기존 글 수정 기능을 사용하는 macOS 앱을 추가합니다. Apple Silicon(arm64)·Intel(x64)용 DMG와 ZIP을 빌드합니다.
 - Finder·Dock으로 실행해도 Homebrew, 기본 CLI 설치, nvm·fnm·Volta·asdf·mise 경로에서 AI CLI와 Node를 찾으며 자식 프로세스에도 동일한 PATH를 전달합니다.
 - 운영체제에 맞는 AI 설치·로그인 안내와 macOS 메뉴·Command 단축키·창 닫기 후 Dock에서 작업실 다시 열기를 지원합니다.
 - 기존 글의 태그를 바꿀 때 Windows 전용 전체 선택 키 입력 대신 운영체제 공통 편집 명령을 사용합니다.
-- macOS/Windows 자동 검사와 macOS 빌드 워크플로를 추가하고 배포 체크섬에 여러 운영체제·아키텍처 파일을 함께 기록합니다.
+- macOS/Windows 자동 검사와 macOS 빌드 워크플로를 추가하고 배포 체크섬을 운영체제별 폴더에 기록하며 Mac 폴더에는 두 아키텍처 파일을 함께 기록합니다.
 
 ## [0.9.5] - 2026-10-08
 

@@ -6,7 +6,7 @@
 
 ## 사용법
 
-1. Windows는 `HDev-Studio-<버전>-win-x64.exe`를 실행합니다. Mac은 `HDev-Studio-<버전>-mac-arm64.dmg`(Apple Silicon) 또는 `mac-x64.dmg`(Intel)을 열고 앱을 응용 프로그램 폴더로 옮겨 실행합니다. 직접 빌드한 파일은 `dist/<버전>/`에서 찾을 수 있습니다.
+1. Windows는 `HDev-Studio-<버전>-win-x64.exe`를 실행합니다. Mac은 `HDev-Studio-<버전>-mac-arm64.dmg`(Apple Silicon) 또는 `mac-x64.dmg`(Intel)을 열고 앱을 응용 프로그램 폴더로 옮겨 실행합니다. 직접 빌드한 파일은 `dist/<버전>/windows/` 또는 `dist/<버전>/macos/`에서 찾을 수 있습니다.
 2. 처음 실행한 PC라면 **내 티스토리 연결 → 티스토리 로그인**을 누릅니다. 로그인한 계정의 블로그가 하나면 자동으로 연결하고, 여러 개면 사용할 블로그를 선택합니다. 공개 글과 카테고리를 바로 불러오며 주소를 직접 입력할 필요가 없습니다. **도움말 · AI 연결**에서 사용할 CLI를 선택하고 아래 [AI 연결 방법](#ai-연결-방법)에 따라 로그인합니다.
 3. 사진을 업로드하고 주제·메모를 적습니다. PNG/JPEG/WebP, 한 장 10MB, 한 글 20장까지 지원합니다.
 4. 필요한 경우 **글쓰기 · 발행 카테고리**를 먼저 고르고 **내 말투로 초안 만들기**를 누릅니다. 해당 분류의 글쓰기 지침이 적용됩니다. 제목, 태그, 문단, 코드, 사진 설명과 순서를 편집하고 미리보기로 검토합니다.
@@ -196,9 +196,9 @@ npm run build:exe   # Windows
 # Mac에서는 npm run build:mac
 ```
 
-`npm start` 또는 `Start-App.ps1`은 [웹 개발 화면](http://127.0.0.1:4173/)을 엽니다. `npm run desktop`은 EXE 빌드 없이 **H.Dev Studio · 개발 모드** 창을 엽니다. 개발 모드의 기본 자료 위치는 `%APPDATA%/H.Dev Studio Dev/workspace`이며 배포 앱과 분리합니다. Mac은 `Start-App.command`로 개발 앱을 실행할 수도 있습니다. Mac 배포 자료는 `~/Library/Application Support/H.Dev Studio/workspace`, 개발 자료는 `~/Library/Application Support/H.Dev Studio Dev/workspace`에 보관합니다. 창 닫기는 앱을 종료하지 않으며 Dock 아이콘으로 다시 열고 `⌘Q`로 종료합니다. 복사·붙여넣기는 `⌘C`·`⌘V`입니다. 직접 발행은 Electron 앱에서 지원합니다. `HDEV_DATA_DIR`로 다른 자료 폴더를 지정할 수 있지만 같은 자료를 두 앱에서 동시에 편집하지 마세요.
+`npm start` 또는 `Start-App.ps1`은 [웹 개발 화면](http://127.0.0.1:4173/)을 엽니다. `npm run desktop`은 EXE 빌드 없이 **H.Dev Studio · 개발 모드** 창을 엽니다. 개발 모드의 기본 자료 위치는 `%APPDATA%/H.Dev Studio Dev/workspace`이며 배포 앱과 분리합니다. Windows는 `windows/Start-App.ps1`, Mac은 `macos/Start-App.command`로 개발 앱을 실행할 수도 있습니다. Mac 배포 자료는 `~/Library/Application Support/H.Dev Studio/workspace`, 개발 자료는 `~/Library/Application Support/H.Dev Studio Dev/workspace`에 보관합니다. 창 닫기는 앱을 종료하지 않으며 Dock 아이콘으로 다시 열고 `⌘Q`로 종료합니다. 복사·붙여넣기는 `⌘C`·`⌘V`입니다. 직접 발행은 Electron 앱에서 지원합니다. `HDEV_DATA_DIR`로 다른 자료 폴더를 지정할 수 있지만 같은 자료를 두 앱에서 동시에 편집하지 마세요.
 
-초기 설정, 버전 올리기와 배포 파일 관리는 [버전·배포 관리](RELEASING.md)를 참고하세요. EXE는 배포할 때 만들고 로컬에는 최신 버전 하나만 보관합니다. 과거 버전의 소스는 Git 태그에서 확인합니다.
+공통 기능 코드는 `desktop/`·`scripts/`·`web/`에 유지하며 운영체제별 실행·빌드 안내는 [Windows](../windows/README.md)와 [macOS](../macos/README.md)에서 확인합니다. 초기 설정, 버전 올리기와 배포 파일 관리는 [버전·배포 관리](RELEASING.md)를 참고하세요. EXE는 배포할 때 만들고 로컬에는 최신 버전 하나만 보관합니다. 과거 버전의 소스는 Git 태그에서 확인합니다.
 
 ## 검증 범위
 

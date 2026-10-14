@@ -67,7 +67,7 @@ npm run setup
 npm run desktop
 ```
 
-Finder 실행용 앱을 만들려면 Mac에서 `npm run build:mac`을 실행합니다. `dist/0.10.0/HDev-Studio-0.10.0-mac-<CPU>.dmg`를 열어 **H.Dev Studio.app**을 응용 프로그램 폴더로 옮깁니다. 서명·공증 인증서 없이 빌드한 파일은 macOS가 실행을 제한할 수 있습니다. 직접 빌드한 파일임을 확인한 뒤 시스템 설정 → 개인정보 보호 및 보안에서 허용합니다.
+Finder 실행용 앱을 만들려면 Mac에서 `npm run build:mac`을 실행합니다. `dist/0.10.0/macos/HDev-Studio-0.10.0-mac-<CPU>.dmg`를 열어 **H.Dev Studio.app**을 응용 프로그램 폴더로 옮깁니다. 서명·공증 인증서 없이 빌드한 파일은 macOS가 실행을 제한할 수 있습니다. 직접 빌드한 파일임을 확인한 뒤 시스템 설정 → 개인정보 보호 및 보안에서 허용합니다.
 
 사진·메모·참고자료, AI 초안과 부분 다듬기, 카테고리·말투 설정, 표지·목차·GitHub 카드, 티스토리 로그인·사진 발행·기존 글 수정은 Windows와 같은 코드를 사용합니다. AI 설치 명령은 Mac용으로 표시하며 Homebrew·기본 설치·Node 버전 관리자 경로를 탐색합니다. 창을 닫아도 앱은 Dock에 남고, Dock 아이콘을 클릭하면 같은 작업실을 다시 엽니다. 완전히 종료하려면 `⌘Q`를 사용합니다.
 
@@ -84,6 +84,31 @@ Finder 실행용 앱을 만들려면 Mac에서 `npm run build:mac`을 실행합�
 | 자동 검사 | Node Test Runner, Electron UI 검증, GitHub Actions |
 
 사용자 사진·초안·말투·계정 설정은 앱 자료 폴더에 저장하며 Git과 배포 앱에 포함하지 않습니다. Windows 기본 위치는 `%APPDATA%/H.Dev Studio/workspace`, macOS는 `~/Library/Application Support/H.Dev Studio/workspace`입니다.
+
+## 폴더 구조
+
+```text
+blog-automation/
+├─ desktop/                 # 공통 Electron 창·티스토리 연결
+├─ scripts/                 # 공통 AI·자료 보관·API·발행 처리
+├─ web/                     # 공통 작업실·편집·미리보기
+├─ config/                  # 공유용 기본 설정과 말투
+├─ windows/                 # Windows 실행·빌드 스크립트와 설정
+├─ macos/                   # macOS 실행·빌드 스크립트와 설정
+├─ test/ · validation/      # 공통 자동 검사와 모의 편집기
+└─ dist/<버전>/
+   ├─ windows/              # Windows EXE·체크섬 (로컬 빌드 결과)
+   └─ macos/                # Mac DMG·ZIP·체크섬 (로컬 빌드 결과)
+```
+
+작업실과 기능 코드를 한 번 수정하면 두 운영체제에 적용됩니다. 운영체제에 따른 CLI 경로·메뉴·창 동작은 공통 코드에서 처리하고 실행·빌드 설정과 안내를 두 폴더에 나눴습니다. 의존성과 버전은 루트의 `package.json`·`package-lock.json`에서 함께 관리합니다.
+
+| 운영체제 | 소스 실행 | 빌드 | 결과 위치 |
+| --- | --- | --- | --- |
+| [Windows 안내](windows/README.md) | `windows/Start-App.ps1` | `npm run build:exe` | `dist/<버전>/windows/` |
+| [macOS 안내](macos/README.md) | `macos/Start-App.command` | `npm run build:mac` | `dist/<버전>/macos/` |
+
+`dist/`와 개인 자료는 Git에 올리지 않습니다. 기존 Windows 다운로드는 0.9.5 Release이며, 0.10.0 Mac 파일은 소스로 빌드하거나 수동 빌드 워크플로의 산출물로 받을 수 있습니다.
 
 ## 개발 실행
 
@@ -105,9 +130,11 @@ npm test
 npm run test:desktop
 npm run test:categories
 npm run test:writing
+npm run test:setup
 npm run test:account
 npm run test:refine
 npm run test:existing
+# macOS 추가 검사: npm run test:lifecycle
 ```
 
 자동 검사는 임시 자료와 모의 편집기를 사용하며 실제 티스토리에 테스트 글을 발행하지 않습니다.

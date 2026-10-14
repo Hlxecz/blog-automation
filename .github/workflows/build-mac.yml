@@ -41,10 +41,10 @@ jobs:
         with:
           name: hdev-studio-mac-${{ runner.arch }}-${{ github.run_number }}
           path: |
-            dist/*/HDev-Studio-*-mac-*.dmg
-            dist/*/HDev-Studio-*-mac-*.zip
-            dist/*/SHA256SUMS.txt
-            dist/*/release.json
+            dist/*/macos/HDev-Studio-*-mac-*.dmg
+            dist/*/macos/HDev-Studio-*-mac-*.zip
+            dist/*/macos/SHA256SUMS.txt
+            dist/*/macos/release.json
           if-no-files-found: error
           compression-level: 0
           retention-days: 14

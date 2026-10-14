@@ -54,22 +54,6 @@
     ],
     "asarUnpack": [
       "desktop/publish.mjs"
-    ],
-    "win": {
-      "target": "portable",
-      "icon": "desktop/assets/icon.ico"
-    },
-    "portable": {
-      "artifactName": "HDev-Studio-${version}-win-x64.exe"
-    },
-    "mac": {
-      "target": [
-        "dmg",
-        "zip"
-      ],
-      "icon": "desktop/assets/icon-mac.png",
-      "category": "public.app-category.productivity",
-      "artifactName": "HDev-Studio-${version}-mac-${arch}.${ext}"
-    }
+    ]
   }
 }

@@ -49,7 +49,7 @@
 생성 파일:
 
 ```text
-dist/<버전>/
+dist/<버전>/windows/
   HDev-Studio-<버전>-win-x64.exe
   SHA256SUMS.txt
   release.json
@@ -71,9 +71,9 @@ npm run build:mac      # 현재 Mac의 CPU
 # 두 CPU 모두 빌드할 때: npm run build:mac:all
 ```
 
-`dist/<버전>/HDev-Studio-<버전>-mac-arm64.dmg`·`.zip` 또는 `mac-x64.dmg`·`.zip`을 만듭니다. DMG의 앱을 응용 프로그램 폴더로 옮기거나 ZIP을 풀어 사용합니다. `.app` 밖의 Electron userData에 자료·로그인 세션을 보관합니다. 설정·사진·초안·쿠키는 배포 파일에 포함하지 않습니다.
+`dist/<버전>/macos/HDev-Studio-<버전>-mac-arm64.dmg`·`.zip` 또는 `mac-x64.dmg`·`.zip`을 만듭니다. DMG의 앱을 응용 프로그램 폴더로 옮기거나 ZIP을 풀어 사용합니다. `.app` 밖의 Electron userData에 자료·로그인 세션을 보관합니다. 설정·사진·초안·쿠키는 배포 파일에 포함하지 않습니다.
 
-`SHA256SUMS.txt`와 `release.json`은 같은 버전 폴더에서 발견한 Windows EXE와 Mac DMG·ZIP을 함께 기록합니다. 빌드 도구는 이미 있는 대상 배포 파일을 덮어쓰지 않습니다. `.github/workflows/build-mac.yml`은 Apple Silicon·Intel 러너에서 검사 후 각 CPU 파일을 빌드하며 수동 실행합니다. 공통 CI도 Windows와 두 Mac 환경을 검사합니다.
+`windows/electron-builder.cjs`와 `macos/electron-builder.cjs`는 루트의 공통 빌드 설정에 각 운영체제 설정을 더합니다. `SHA256SUMS.txt`와 `release.json`은 `dist/<버전>/windows/`, `dist/<버전>/macos/`에서 해당 운영체제의 파일만 기록합니다. `npm run release:checksums`는 존재하는 두 폴더의 확인 파일을 각각 갱신합니다. 빌드 도구는 이미 있는 대상 배포 파일을 덮어쓰지 않습니다. `.github/workflows/build-mac.yml`은 Apple Silicon·Intel 러너에서 검사 후 각 CPU 파일을 빌드하며 수동 실행합니다. 공통 CI도 Windows와 두 Mac 환경을 검사합니다.
 
 인증서가 없으면 서명·공증되지 않은 개발 배포본입니다. 정식 배포에는 electron-builder의 `CSC_LINK`·`CSC_KEY_PASSWORD`와 Apple 공증 환경 변수를 안전한 CI 비밀 설정으로 제공하세요. 인증서와 계정 비밀은 저장소에 넣지 않습니다. 이 변경은 새 GitHub Release를 자동 공개하지 않습니다.
 
@@ -134,9 +134,10 @@ git push origin main
 
 ## GitHub 검사와 배포
 
-- **Windows checks:** `main`에 push하거나 PR을 만들면 설정 초기화, 버전 검사, Node 테스트와 Electron 편집기·카테고리·글쓰기 프롬프트 화면 검증을 실행합니다. 모의 목록과 임시 자료 폴더에서 선택 보관·재생성 시 유지·목록 읽기 실패 복구·카테고리 지침 적용·기본 프롬프트 보존·모바일 배치를 확인합니다.
+- **Desktop checks:** `main`에 push하거나 PR을 만들면 Windows·Apple Silicon·Intel 환경에서 설정 초기화, 버전 검사, Node 테스트와 Electron 편집기·카테고리·글쓰기 프롬프트 화면 검증을 실행합니다. 모의 목록과 임시 자료 폴더에서 선택 보관·재생성 시 유지·목록 읽기 실패 복구·카테고리 지침 적용·기본 프롬프트 보존·모바일 배치를 확인합니다.
 - **Build Windows EXE:** Actions 화면에서 수동으로 실행합니다. 같은 검사를 거쳐 EXE와 확인 파일을 다운로드 가능한 산출물로 보관합니다. 산출물은 14일 후 만료됩니다.
-- 두 작업은 저장소 읽기 권한을 사용합니다. GitHub Release나 태그를 자동 생성하지 않습니다. 실행 결과는 저장소의 Actions 화면에서 확인합니다.
+- **Build macOS app:** Actions에서 수동 실행하며 Apple Silicon·Intel DMG·ZIP과 확인 파일을 산출물로 보관합니다.
+- 세 작업은 저장소 읽기 권한을 사용합니다. GitHub Release나 태그를 자동 생성하지 않습니다. 실행 결과는 저장소의 Actions 화면에서 확인합니다.
 
 새 버전을 배포할 때는 **실제로 빌드한 소스 커밋**에 `v<버전>` 태그를 붙여 푸시합니다. 필요하면 해당 태그의 GitHub Release에 EXE·`SHA256SUMS.txt`·`release.json`을 첨부하고 변경 내역과 검증 범위를 적습니다. 이미 있는 태그를 덮어쓰지 않습니다. 이전 EXE의 소스가 없으면 현재 코드에 과거 버전 태그를 붙이지 않습니다.
 
