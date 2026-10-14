@@ -1,5 +1,5 @@
 import './runtime.mjs';
-import { app, BrowserWindow, Menu, session } from 'electron';
+import { app, BrowserWindow, Menu, session, dialog } from 'electron';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -12,6 +12,9 @@ app.setPath('appData', root);
 app.setAppPath(fileURLToPath(new URL('../', import.meta.url)));
 process.env.HDEV_DATA_DIR = path.join(root, 'workspace');
 process.env.TISTORY_CODEX_BIN = path.join(root, 'missing-cli');
+// Report startup/navigation failures in logs instead of blocking headless CI
+// behind a native error dialog.
+dialog.showErrorBox = (title, message) => { console.error(`${title}: ${message}`); app.exit(1); };
 const wait = async predicate => {
   for (let i = 0; i < 200; i++) {
     const result = predicate();
@@ -50,10 +53,18 @@ try {
   if (process.platform === 'darwin') {
     stage = 'Dock reopening'; console.log(`Desktop lifecycle: ${stage}`);
     assert.equal(Menu.getApplicationMenu().items[0].role, 'appmenu');
+    // Deliberately slow the reopened page to cover CI's load/shutdown race.
+    win.webContents.session.webRequest.onBeforeRequest({ urls: [runtime.origin + '/*'] }, (details, callback) => {
+      if (new URL(details.url).pathname === '/') setTimeout(() => callback({}), 300);
+      else callback({});
+    });
     win.close();
     await wait(() => !BrowserWindow.getAllWindows().length);
     app.emit('activate');
-    const reopened = await wait(() => BrowserWindow.getAllWindows().find(w => w.webContents.getURL().startsWith(runtime.origin)));
+    const reopened = await wait(() => BrowserWindow.getAllWindows().find(w =>
+      w.webContents.getURL().startsWith(runtime.origin) && !w.webContents.isLoadingMainFrame()));
+    assert.equal(await reopened.webContents.executeJavaScript('document.readyState'), 'complete');
+    reopened.webContents.session.webRequest.onBeforeRequest(null);
     assert.notEqual(reopened.id, win.id);
     const after = await (await fetch(runtime.origin + '/api/bootstrap')).json();
     assert.equal(after.token, before.token);
