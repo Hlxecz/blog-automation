@@ -48,7 +48,7 @@ export function createPostUpdates({adapter,blogUrl,fetchPublic=fetch,tocMode='ar
     const previous=state(job);
     if(running.has(job)) return previous;
     if(previous.phase==='uncertain') reject('이전 수정 결과가 불확실합니다. 원문을 확인한 뒤 다시 불러와 주세요.');
-    if(!adapter) reject('기존 글 수정 반영은 최신 Windows 앱에서 사용할 수 있습니다.');
+    if(!adapter) reject('기존 글 수정 반영은 최신 데스크톱 앱에서 사용할 수 있습니다.');
     const target=read(targetFile), origin=new URL(blogUrl).origin;
     if(target.identity?.blogUrl!==origin || normalizePostUrl(target.identity?.url,origin)!==target.identity.url) reject('현재 연결한 블로그와 기존 글 대상이 다릅니다.');
     const bytes=fs.readFileSync(path.join(directory,'draft.json')), digest=hash(bytes);

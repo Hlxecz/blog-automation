@@ -305,7 +305,7 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
         } finally { importingPosts=false; }
       }
       if (route === '/api/bootstrap' && req.method === 'GET') { await connectionCheck; return sendJson(res, {
-        token, blogUrl: c.blogUrl, blogConfigured: blogConfigured(c.blogUrl), tistory: accountState(), connected: ai.connected, ai, canPublish: !!publishAdapter, canUpdate:!!updateAdapter, categories: categories.state(), writingPrompts: writingPrompts.state(),
+        token, platform: process.platform, blogUrl: c.blogUrl, blogConfigured: blogConfigured(c.blogUrl), tistory: accountState(), connected: ai.connected, ai, canPublish: !!publishAdapter, canUpdate:!!updateAdapter, categories: categories.state(), writingPrompts: writingPrompts.state(),
         style: exists(path.resolve(root, c.styleProfile)) ? fs.readFileSync(path.resolve(root, c.styleProfile), 'utf8') : ''
       }); }
       if (route === '/api/jobs' && req.method === 'GET') {

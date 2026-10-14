@@ -8,9 +8,9 @@
   <strong>캡처에 담긴 개발 과정을, 내 말투의 티스토리 글로.</strong>
 </p>
 
-<p align="center">Windows x64 · Codex / Claude Code CLI · Tistory</p>
+<p align="center">Windows x64 / macOS arm64·x64 · Codex / Claude Code CLI · Tistory</p>
 
-개발 캡처와 메모를 분석해 초안을 만들고, 필요한 문단만 다듬어 검토한 뒤 티스토리에 발행하는 Windows 데스크톱 앱입니다. 이미 발행한 글도 불러와 같은 주소에서 수정할 수 있습니다.
+개발 캡처와 메모를 분석해 초안을 만들고, 필요한 문단만 다듬어 검토한 뒤 티스토리에 발행하는 Windows와 macOS 데스크톱 앱입니다. 이미 발행한 글도 불러와 같은 주소에서 수정할 수 있습니다.
 
 <p align="center">
   <a href="https://github.com/Hlxecz/blog-automation/releases/tag/v0.9.5"><strong>Windows 앱 다운로드</strong></a>
@@ -55,6 +55,22 @@
 
 Windows에서 처음 받은 서명되지 않은 앱은 Microsoft Defender SmartScreen 안내가 나타날 수 있습니다. 배포 파일의 무결성은 Release에 함께 제공되는 `SHA256SUMS.txt`로 확인할 수 있습니다.
 
+## Mac에서 사용하기
+
+macOS 지원은 **0.10.0** 소스부터 포함됩니다. Apple Silicon(M1 이상)은 `arm64`, Intel Mac은 `x64` 파일을 사용합니다. 기존 Windows 0.9.5 Release에는 Mac 파일이 없습니다.
+
+Node.js 22 이상을 설치한 뒤 터미널에서 실행합니다.
+
+```sh
+npm ci
+npm run setup
+npm run desktop
+```
+
+Finder 실행용 앱을 만들려면 Mac에서 `npm run build:mac`을 실행합니다. `dist/0.10.0/HDev-Studio-0.10.0-mac-<CPU>.dmg`를 열어 **H.Dev Studio.app**을 응용 프로그램 폴더로 옮깁니다. 서명·공증 인증서 없이 빌드한 파일은 macOS가 실행을 제한할 수 있습니다. 직접 빌드한 파일임을 확인한 뒤 시스템 설정 → 개인정보 보호 및 보안에서 허용합니다.
+
+사진·메모·참고자료, AI 초안과 부분 다듬기, 카테고리·말투 설정, 표지·목차·GitHub 카드, 티스토리 로그인·사진 발행·기존 글 수정은 Windows와 같은 코드를 사용합니다. AI 설치 명령은 Mac용으로 표시하며 Homebrew·기본 설치·Node 버전 관리자 경로를 탐색합니다. 창을 닫아도 앱은 Dock에 남고, Dock 아이콘을 클릭하면 같은 작업실을 다시 엽니다. 완전히 종료하려면 `⌘Q`를 사용합니다.
+
 ## 기술 스택
 
 | 구분 | 사용 기술 |
@@ -67,11 +83,11 @@ Windows에서 처음 받은 서명되지 않은 앱은 Microsoft Defender SmartS
 | 발행 대상 | Tistory 편집 화면 |
 | 자동 검사 | Node Test Runner, Electron UI 검증, GitHub Actions |
 
-사용자 사진·초안·말투·계정 설정은 앱 자료 폴더에 저장하며 Git과 배포 EXE에 포함하지 않습니다. 기본 위치는 `%APPDATA%/H.Dev Studio/workspace`입니다.
+사용자 사진·초안·말투·계정 설정은 앱 자료 폴더에 저장하며 Git과 배포 앱에 포함하지 않습니다. Windows 기본 위치는 `%APPDATA%/H.Dev Studio/workspace`, macOS는 `~/Library/Application Support/H.Dev Studio/workspace`입니다.
 
 ## 개발 실행
 
-Windows 64비트와 Node.js 22 이상이 필요합니다.
+Windows 64비트 또는 macOS와 Node.js 22 이상이 필요합니다.
 
 ```powershell
 npm ci
@@ -79,7 +95,7 @@ npm run setup
 npm run desktop
 ```
 
-`npm start`는 브라우저 개발 화면, `npm run desktop`은 티스토리 연결을 포함한 Electron 앱을 실행합니다. 배포용 EXE는 개발 확인을 마친 뒤 `npm run build:exe`로 만듭니다.
+`npm start`는 브라우저 개발 화면, `npm run desktop`은 티스토리 연결을 포함한 Electron 앱을 실행합니다. 배포용 Windows EXE는 `npm run build:exe`, Mac DMG·ZIP은 `npm run build:mac`으로 만듭니다. macOS의 모든 CPU용 파일은 `npm run build:mac:all`로 빌드합니다.
 
 ## 검사
 

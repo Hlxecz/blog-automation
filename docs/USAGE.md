@@ -1,12 +1,12 @@
 # H.Dev Studio 사용 안내
 
-개발 캡처와 메모로 내 말투의 초안을 만들고, 편집·미리보기 후 **티스토리에 발행** 버튼으로 공개 게시하는 Windows 앱입니다.
+개발 캡처와 메모로 내 말투의 초안을 만들고, 편집·미리보기 후 **티스토리에 발행** 버튼으로 공개 게시하는 Windows와 macOS 앱입니다.
 
 화면을 따라가는 예시는 [H.Dev Studio 사용 방법 블로그 글](https://hlxecz.tistory.com/30)에서 볼 수 있습니다.
 
 ## 사용법
 
-1. `HDev-Studio-<버전>-win-x64.exe`를 실행합니다. 설치가 필요 없는 Windows 64비트 앱입니다. 직접 빌드한 파일은 `dist/<버전>/`에서 찾을 수 있습니다.
+1. Windows는 `HDev-Studio-<버전>-win-x64.exe`를 실행합니다. Mac은 `HDev-Studio-<버전>-mac-arm64.dmg`(Apple Silicon) 또는 `mac-x64.dmg`(Intel)을 열고 앱을 응용 프로그램 폴더로 옮겨 실행합니다. 직접 빌드한 파일은 `dist/<버전>/`에서 찾을 수 있습니다.
 2. 처음 실행한 PC라면 **내 티스토리 연결 → 티스토리 로그인**을 누릅니다. 로그인한 계정의 블로그가 하나면 자동으로 연결하고, 여러 개면 사용할 블로그를 선택합니다. 공개 글과 카테고리를 바로 불러오며 주소를 직접 입력할 필요가 없습니다. **도움말 · AI 연결**에서 사용할 CLI를 선택하고 아래 [AI 연결 방법](#ai-연결-방법)에 따라 로그인합니다.
 3. 사진을 업로드하고 주제·메모를 적습니다. PNG/JPEG/WebP, 한 장 10MB, 한 글 20장까지 지원합니다.
 4. 필요한 경우 **글쓰기 · 발행 카테고리**를 먼저 고르고 **내 말투로 초안 만들기**를 누릅니다. 해당 분류의 글쓰기 지침이 적용됩니다. 제목, 태그, 문단, 코드, 사진 설명과 순서를 편집하고 미리보기로 검토합니다.
@@ -156,11 +156,31 @@ claude auth status
 
 Claude Code를 사용할 수 있는 본인의 Claude 계정으로 로그인하세요. WinGet을 사용할 수 없다면 [Anthropic 공식 설치 안내](https://code.claude.com/docs/en/setup)의 Windows 설치 방법을 따르세요. 업데이트는 `winget upgrade Anthropic.ClaudeCode`로 실행합니다. Claude로 분석할 사진은 한 장당 5MB 이하로 준비하세요. 사진과 메모를 합친 전송 데이터는 CLI의 10MB 입력 한도를 적용하며, 초과하면 사진 수·크기를 줄이거나 Codex를 선택하라는 안내를 표시합니다.
 
+### Mac에서 AI 연결
+
+Codex는 Node.js 22 이상을 설치한 뒤 터미널에서 다음 명령으로 준비합니다.
+
+```sh
+npm install -g @openai/codex@latest
+codex login
+codex login status
+```
+
+Claude Code는 공식 설치 스크립트로 설치하고 로그인합니다.
+
+```sh
+curl -fsSL https://claude.ai/install.sh | bash
+claude auth login
+claude auth status
+```
+
+Claude Code 기본 설치는 `claude update`, Homebrew 설치는 `brew upgrade claude-code`로 업데이트합니다. 설치 후 앱을 다시 열고 연결을 확인하세요. Finder 실행 시에도 `~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin`, nvm·fnm·Volta·asdf·mise 경로에서 CLI를 찾습니다. 여러 Node 버전이 있고 터미널 PATH가 없는 경우 nvm·fnm 설치 중 가장 높은 버전을 사용합니다.
+
 ### 앱에서 확인
 
 H.Dev Studio를 완전히 종료하고 다시 실행한 뒤 **도움말 · AI 연결**에서 설치한 AI를 선택하고 **연결 다시 확인**을 누릅니다. 설치 없음, 로그인 필요, 연결됨 상태를 구분해 표시합니다. 연결 확인 자체는 글을 생성하지 않으며 사용량 여유까지 보장하지 않습니다. 사용량 초과나 네트워크 오류가 나면 안내에 따라 확인 후 재시도하세요.
 
-개발 환경에서 실행 파일이 표준 경로에 없다면 `TISTORY_CODEX_BIN` 또는 `TISTORY_CLAUDE_BIN`에 해당 실행 파일의 절대 경로를 지정한 뒤 앱을 시작할 수 있습니다. `.exe` 또는 Node 진입점 `.js`/`.mjs`를 지정하며 `.cmd`/`.ps1` 래퍼는 사용하지 않습니다.
+개발 환경에서 실행 파일이 표준 경로에 없다면 `TISTORY_CODEX_BIN` 또는 `TISTORY_CLAUDE_BIN`에 해당 실행 파일의 절대 경로를 지정한 뒤 앱을 시작할 수 있습니다. 실행 파일 또는 Node 진입점 `.js`/`.mjs`를 지정하며 `.cmd`/`.ps1` 래퍼는 사용하지 않습니다.
 
 ## 개발과 빌드
 
@@ -172,10 +192,11 @@ npm run setup
 npm test
 npm run test:desktop
 npm run desktop
-npm run build:exe
+npm run build:exe   # Windows
+# Mac에서는 npm run build:mac
 ```
 
-`npm start` 또는 `Start-App.ps1`은 [웹 개발 화면](http://127.0.0.1:4173/)을 엽니다. `npm run desktop`은 EXE 빌드 없이 **H.Dev Studio · 개발 모드** 창을 엽니다. 개발 모드의 기본 자료 위치는 `%APPDATA%/H.Dev Studio Dev/workspace`이며 배포 앱과 분리합니다. 직접 발행은 Electron 앱에서 지원합니다. `HDEV_DATA_DIR`로 다른 자료 폴더를 지정할 수 있지만 같은 자료를 두 앱에서 동시에 편집하지 마세요.
+`npm start` 또는 `Start-App.ps1`은 [웹 개발 화면](http://127.0.0.1:4173/)을 엽니다. `npm run desktop`은 EXE 빌드 없이 **H.Dev Studio · 개발 모드** 창을 엽니다. 개발 모드의 기본 자료 위치는 `%APPDATA%/H.Dev Studio Dev/workspace`이며 배포 앱과 분리합니다. Mac은 `Start-App.command`로 개발 앱을 실행할 수도 있습니다. Mac 배포 자료는 `~/Library/Application Support/H.Dev Studio/workspace`, 개발 자료는 `~/Library/Application Support/H.Dev Studio Dev/workspace`에 보관합니다. 창 닫기는 앱을 종료하지 않으며 Dock 아이콘으로 다시 열고 `⌘Q`로 종료합니다. 복사·붙여넣기는 `⌘C`·`⌘V`입니다. 직접 발행은 Electron 앱에서 지원합니다. `HDEV_DATA_DIR`로 다른 자료 폴더를 지정할 수 있지만 같은 자료를 두 앱에서 동시에 편집하지 마세요.
 
 초기 설정, 버전 올리기와 배포 파일 관리는 [버전·배포 관리](RELEASING.md)를 참고하세요. EXE는 배포할 때 만들고 로컬에는 최신 버전 하나만 보관합니다. 과거 버전의 소스는 Git 태그에서 확인합니다.
 

@@ -7,9 +7,10 @@ import { randomUUID } from 'node:crypto';
 import { createTistoryAccountReader, tistorySessionPartition } from './account.mjs';
 
 app.setName('H.Dev Studio');
-// Keep development windows and sessions independent from the installed EXE.
+const isMac = process.platform === 'darwin';
+// Keep development windows and sessions independent from the installed app.
 if (!app.isPackaged) app.setPath('userData', path.join(app.getPath('appData'), 'H.Dev Studio Dev'));
-app.setAppUserModelId('com.hdev.studio');
+if (process.platform === 'win32') app.setAppUserModelId('com.hdev.studio');
 let mainWindow, server, origin, dataRoot;
 const remoteWindows = new Set();
 function openBlogSettings(eventName = 'hdev:blog-settings') {
@@ -62,7 +63,7 @@ function openTistory(url) {
   remoteWindows.add(win); win.on('closed', () => remoteWindows.delete(win));
   win.webContents.on('page-title-updated', event => { event.preventDefault(); win.setTitle(`${win.webContents.getTitle()} · 티스토리`); });
   protectNavigation(win);
-  win.setMenu(Menu.buildFromTemplate([
+  if (!isMac) win.setMenu(Menu.buildFromTemplate([
     { label: '티스토리', submenu: [
       { label: '뒤로', accelerator: 'Alt+Left', click: () => { if (win.webContents.navigationHistory.canGoBack()) win.webContents.navigationHistory.goBack(); } },
       { label: '새로고침', role: 'reload' }, { type: 'separator' },
@@ -89,6 +90,23 @@ async function openDataFolder() {
   } catch (error) {
     dialog.showMessageBox(mainWindow, { type: 'error', message: '자료 폴더를 열지 못했습니다.', detail: `${error.message}\n\n저장 위치: ${dataRoot}` });
   }
+}
+
+async function createMainWindow() {
+  const bundle = app.getAppPath();
+  mainWindow = new BrowserWindow({ width: 1440, height: 980, minWidth: 880, minHeight: 680, show: false,
+    backgroundColor: '#ffffff', title: app.isPackaged ? 'H.Dev Studio' : 'H.Dev Studio · 개발 모드', icon: path.join(bundle, 'desktop/assets/icon.png'),
+    webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true } });
+  protectNavigation(mainWindow, true);
+  mainWindow.on('close', event => {
+    if (server.hasActiveGeneration()) {
+      event.preventDefault(); dialog.showMessageBox(mainWindow, { type: 'info', message: '카테고리·자료 읽기, 글 작성, 말투 분석 또는 발행이 진행 중입니다.', detail: '작업이 끝나면 앱을 닫을 수 있어요. 티스토리 로그인 화면이 열렸다면 먼저 로그인을 완료해 주세요.' });
+    }
+  });
+  mainWindow.on('closed', () => { mainWindow = null; });
+  mainWindow.once('ready-to-show', () => mainWindow.show());
+  if (!app.isPackaged) mainWindow.webContents.on('page-title-updated', event => { event.preventDefault(); mainWindow.setTitle('H.Dev Studio · 개발 모드'); });
+  await mainWindow.loadURL(origin);
 }
 
 if (!app.requestSingleInstanceLock()) app.quit();
@@ -119,18 +137,13 @@ else {
       accountReader: createTistoryAccountReader({ openWindow: openTistory }) });
     await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
     origin = `http://127.0.0.1:${server.address().port}`;
-    mainWindow = new BrowserWindow({ width: 1440, height: 980, minWidth: 880, minHeight: 680, show: false,
-      backgroundColor: '#ffffff', title: app.isPackaged ? 'H.Dev Studio' : 'H.Dev Studio · 개발 모드', icon: path.join(bundle, 'desktop/assets/icon.png'),
-      webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true } });
-    protectNavigation(mainWindow, true);
-    mainWindow.on('close', event => {
-      if (server.hasActiveGeneration()) {
-        event.preventDefault(); dialog.showMessageBox(mainWindow, { type: 'info', message: '카테고리·자료 읽기, 글 작성, 말투 분석 또는 발행이 진행 중입니다.', detail: '작업이 끝나면 앱을 닫을 수 있어요. 티스토리 로그인 화면이 열렸다면 먼저 로그인을 완료해 주세요.' });
-      }
-    });
-    mainWindow.on('closed', () => { mainWindow = null; });
     Menu.setApplicationMenu(Menu.buildFromTemplate([
+      ...(isMac ? [{ role: 'appMenu' }] : []),
       { label: '작업실', submenu: [
+        { label: '작업실 열기', click: () => {
+          if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
+          else createMainWindow().catch(error => dialog.showErrorBox('작업실 열기 실패', error.message));
+        } },
         { label: '자료 폴더 열기', click: openDataFolder },
         { label: '내 블로그 연결', click: () => openBlogSettings() },
         { label: '티스토리 로그인', click: () => openBlogSettings('hdev:tistory-login') },
@@ -138,15 +151,26 @@ else {
       ] },
       { label: '편집', submenu: [{ role: 'undo', label: '실행 취소' }, { role: 'redo', label: '다시 실행' }, { type: 'separator' }, { role: 'cut', label: '잘라내기' }, { role: 'copy', label: '복사' }, { role: 'paste', label: '붙여넣기' }, { role: 'selectAll', label: '전체 선택' }] },
       { label: '보기', submenu: [{ role: 'reload', label: '새로고침' }, { role: 'resetZoom', label: '기본 크기' }, { role: 'zoomIn', label: '확대' }, { role: 'zoomOut', label: '축소' }] },
+      ...(isMac ? [{ label: '티스토리', submenu: [
+        { label: '뒤로', accelerator: 'Cmd+[', click: () => {
+          const win = BrowserWindow.getFocusedWindow();
+          if (remoteWindows.has(win) && win.webContents.navigationHistory.canGoBack()) win.webContents.navigationHistory.goBack();
+        } },
+        { label: '브라우저에서 이어서 열기', click: () => {
+          const win = BrowserWindow.getFocusedWindow(), target = win?.webContents.getURL();
+          if (remoteWindows.has(win) && tistoryUrl(target) && new URL(target).hostname.endsWith('tistory.com')) shell.openExternal(target);
+        } }
+      ] }, { role: 'windowMenu' }] : []),
       { label: '도움말', submenu: [{ label: 'AI 선택 / 연결 방법', click: () => {
         if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.executeJavaScript("window.dispatchEvent(new Event('hdev:ai-help'))").catch(() => {});
       } }] }
     ]));
-    mainWindow.once('ready-to-show', () => mainWindow.show());
-    if (!app.isPackaged) mainWindow.webContents.on('page-title-updated', event => { event.preventDefault(); mainWindow.setTitle('H.Dev Studio · 개발 모드'); });
-    await mainWindow.loadURL(origin);
+    await createMainWindow();
     fs.writeFileSync(path.join(app.getPath('userData'), 'runtime.json'), JSON.stringify({ pid: process.pid, origin, dataRoot, version: app.getVersion() }));
   }).catch(error => { dialog.showErrorBox('H.Dev Studio 시작 실패', error.message); app.quit(); });
-  app.on('window-all-closed', () => app.quit());
+  app.on('activate', () => {
+    if (origin && !mainWindow) createMainWindow().catch(error => dialog.showErrorBox('작업실 열기 실패', error.message));
+  });
+  app.on('window-all-closed', () => { if (!isMac) app.quit(); });
   app.on('will-quit', () => { server?.closeAllConnections(); server?.close(); });
 }

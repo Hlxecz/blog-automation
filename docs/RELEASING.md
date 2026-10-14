@@ -61,6 +61,22 @@ dist/<버전>/
 
 EXE 실행, 사진 업로드, 초안 열기·편집·표지, 자료 폴더 열기를 확인한 뒤 배포합니다. 자동 검증은 실제 블로그에 테스트 글을 발행하지 않습니다. 티스토리 화면 변경 등 실제 계정에서 확인하지 못한 항목은 배포 설명에 적습니다.
 
+## Mac 앱 빌드
+
+Mac에서 공통 검사와 Electron 기능 검사를 통과한 뒤 실행합니다.
+
+```sh
+npm run test:lifecycle
+npm run build:mac      # 현재 Mac의 CPU
+# 두 CPU 모두 빌드할 때: npm run build:mac:all
+```
+
+`dist/<버전>/HDev-Studio-<버전>-mac-arm64.dmg`·`.zip` 또는 `mac-x64.dmg`·`.zip`을 만듭니다. DMG의 앱을 응용 프로그램 폴더로 옮기거나 ZIP을 풀어 사용합니다. `.app` 밖의 Electron userData에 자료·로그인 세션을 보관합니다. 설정·사진·초안·쿠키는 배포 파일에 포함하지 않습니다.
+
+`SHA256SUMS.txt`와 `release.json`은 같은 버전 폴더에서 발견한 Windows EXE와 Mac DMG·ZIP을 함께 기록합니다. 빌드 도구는 이미 있는 대상 배포 파일을 덮어쓰지 않습니다. `.github/workflows/build-mac.yml`은 Apple Silicon·Intel 러너에서 검사 후 각 CPU 파일을 빌드하며 수동 실행합니다. 공통 CI도 Windows와 두 Mac 환경을 검사합니다.
+
+인증서가 없으면 서명·공증되지 않은 개발 배포본입니다. 정식 배포에는 electron-builder의 `CSC_LINK`·`CSC_KEY_PASSWORD`와 Apple 공증 환경 변수를 안전한 CI 비밀 설정으로 제공하세요. 인증서와 계정 비밀은 저장소에 넣지 않습니다. 이 변경은 새 GitHub Release를 자동 공개하지 않습니다.
+
 ## GitHub에 다음 변경 올리기
 
 저장소는 [Hlxecz/blog-automation](https://github.com/Hlxecz/blog-automation)이며 현재 공개 상태입니다. `origin`은 이 저장소를 가리킵니다. `v0.3.0`~`v0.3.4`는 배포본의 앱 소스에서 복원한 태그입니다. [복원 범위](HISTORY.md)를 확인하세요.

@@ -50,7 +50,7 @@ function toast(message, error = false, undo) {
   toastTimer = setTimeout(() => { el.hidden = true; }, error ? 7000 : 4000);
 }
 function modal(title, content) { $('modal-title').textContent = title; $('modal-content').replaceChildren(content); if (!$('modal').open) $('modal').showModal(); }
-const openAIHelp = createAIHelp({ api, modal, toast, getAI: () => settings?.ai, onChanged: ai => {
+const openAIHelp = createAIHelp({ api, modal, toast, getAI: () => settings?.ai, getPlatform: () => settings?.platform, onChanged: ai => {
   if (!settings) return;
   settings.ai = ai; settings.connected = ai.connected; updateControls();
 } });
@@ -567,7 +567,7 @@ function updateControls() {
   const publishStatus=$('publish-status'); publishStatus.replaceChildren();
   publishStatus.hidden=!draft && !publication?.message;
   if (!publishStatus.hidden) {
-    const p=document.createElement('span'); p.textContent=publication?.message || (capability ? existing?'초안 보관은 이 PC에만 저장됩니다. 버튼을 누르면 원래 글에 수정 내용을 반영합니다.':`${settings.blogUrl} · 버튼을 누르면 현재 초안이 공개 발행됩니다.` : existing?'기존 글 수정 반영은 최신 Windows 앱에서 사용할 수 있어요.':'바로 발행은 최신 Windows EXE 앱에서 사용할 수 있어요.'); publishStatus.append(p);
+    const p=document.createElement('span'); p.textContent=publication?.message || (capability ? existing?'초안 보관은 이 PC에만 저장됩니다. 버튼을 누르면 원래 글에 수정 내용을 반영합니다.':`${settings.blogUrl} · 버튼을 누르면 현재 초안이 공개 발행됩니다.` : existing?'기존 글 수정 반영은 최신 데스크톱 앱에서 사용할 수 있어요.':'바로 발행은 최신 데스크톱 앱에서 사용할 수 있어요.'); publishStatus.append(p);
     if (publication?.url) {const a=document.createElement('a');a.href=publication.url;a.textContent=existing?'수정한 원문 보기 ↗':'발행한 글 보기 ↗';a.target='_blank';a.rel='noopener noreferrer';publishStatus.append(a);}
     else if (existing && publication?.phase==='stale') {const a=document.createElement('a');a.href=existing.url;a.textContent='변경된 원문 보기 ↗';a.target='_blank';a.rel='noopener noreferrer';publishStatus.append(a);}
     else if (publication?.phase==='uncertain') {const a=document.createElement('a');a.href=existing?existing.url:`${settings.blogUrl}/manage`;a.textContent=existing?'원문에서 결과 확인 ↗':'글 관리에서 확인 ↗';a.target='_blank';a.rel='noopener noreferrer';publishStatus.append(a);}

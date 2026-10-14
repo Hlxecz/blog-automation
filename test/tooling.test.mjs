@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { setup } from '../scripts/setup.mjs';
-import { checksums, releaseInfo } from '../scripts/release.mjs';
+import { buildPlan, checksums, releaseInfo } from '../scripts/release.mjs';
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hdev-tooling-test-'));
@@ -65,4 +65,25 @@ test('checksum metadata matches bytes and does not change the existing artifact'
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(info.directory, 'release.json'))), {
     version: info.version, filename: info.filename, bytes: bytes.length, sha256: expected
   });
+});
+
+test('Mac builds target the requested CPU and checksums include both Mac and Windows artifacts', t => {
+  const root = fixture(t);
+  assert.throws(() => buildPlan('build', { platform: 'darwin', root }), /build:mac/);
+  assert.throws(() => buildPlan('build-mac', { platform: 'win32', root }), /macOS/);
+  assert.throws(() => releaseInfo(root, { platform: 'darwin', arch: '../outside' }), /지원하는/);
+  const plan = buildPlan('build-mac', { platform: 'darwin', arch: 'arm64', root });
+  assert.deepEqual(plan.args, ['--mac', 'dmg', 'zip', '--arm64']);
+  const all = buildPlan('build-mac', { platform: 'darwin', all: true, root });
+  assert.deepEqual(all.args, ['--mac', 'dmg', 'zip', '--arm64', '--x64']);
+  assert.equal(all.filenames.length, 4);
+  fs.mkdirSync(plan.info.directory, { recursive: true });
+  for (const name of [...all.filenames, releaseInfo(root).filename]) fs.writeFileSync(path.join(plan.info.directory, name), name);
+  fs.writeFileSync(path.join(plan.info.directory, 'unrelated.zip'), 'ignore');
+  const result = checksums(root);
+  assert.equal(result.artifacts.length, 5);
+  for (const artifact of result.artifacts) {
+    assert.equal(artifact.sha256, createHash('sha256').update(artifact.filename).digest('hex'));
+  }
+  assert.equal(fs.readFileSync(path.join(plan.info.directory, 'SHA256SUMS.txt'), 'utf8').includes('unrelated.zip'), false);
 });

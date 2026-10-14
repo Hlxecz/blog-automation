@@ -66,9 +66,9 @@ GitHub 정보 카드는 선택적인 `draft.githubCard`에 아이콘·주제 분
 
 로컬 글 삭제는 사용자가 앱의 삭제 확인 버튼을 누른 글 ID에만 적용합니다. `inbox/<ID>`와 `drafts/<ID>`의 전체 입력 버전·사진·이력·발행용 사본을 함께 제거하며 티스토리 게시글은 건드리지 않습니다. `scripts/storage.mjs`에서 작업 공간 내 실제 경로와 일반 파일 트리를 확인한 뒤 삭제합니다. 생성·발행 중에는 삭제할 수 없습니다. 사용자 자료를 삭제 기능의 테스트 대상으로 사용하지 않습니다.
 
-Node.js 22 앱이며 Electron으로 Windows EXE를 빌드한다. `desktop/main.mjs`는 독립 앱 창과 격리된 티스토리 창, `desktop/publish.mjs`는 실제 편집기 연결, `scripts/publication.mjs`는 발행 상태·스냅샷·공개 내용 검증, `scripts/tistory.mjs`는 공개 RSS/사이트맵 목록, `scripts/server.mjs`는 로컬 HTTP API, `scripts/generate.mjs`는 Codex CLI 호출, `web/`은 화면, `scripts/blog.mjs`는 기존 파일 처리 기능이다. 앱의 `order.json`은 활성 이미지와 사용자 지정 순서를 나타내며 제외된 사진의 원본 파일은 지우지 않는다.
+Node.js 22 앱이며 Electron으로 Windows EXE와 macOS arm64/x64 DMG·ZIP을 빌드한다. Mac 빌드는 `npm run build:mac`(현재 CPU) 또는 `npm run build:mac:all`(두 CPU)을 사용하며 맥 기능 검사는 `npm run test:lifecycle`을 포함한다. `desktop/main.mjs`는 독립 앱 창과 격리된 티스토리 창, `desktop/publish.mjs`는 실제 편집기 연결, `scripts/publication.mjs`는 발행 상태·스냅샷·공개 내용 검증, `scripts/tistory.mjs`는 공개 RSS/사이트맵 목록, `scripts/server.mjs`는 로컬 HTTP API, `scripts/generate.mjs`는 Codex CLI 호출, `web/`은 화면, `scripts/blog.mjs`는 기존 파일 처리 기능이다. 앱의 `order.json`은 활성 이미지와 사용자 지정 순서를 나타내며 제외된 사진의 원본 파일은 지우지 않는다.
 
-공개 글 목록과 계정 로그인 상태를 혼동하지 않는다. 티스토리 Open API는 종료되었으므로 공식 편집 화면을 사용한다. 앱은 로그인 창을 제공하고 사용자가 직접 기존 글 수정/발행을 할 수 있다. 이는 에이전트가 기존 글을 임의로 수정·발행해도 된다는 뜻이 아니다. 인증된 화면 확인 전 편집이나 저장 성공을 주장하지 않는다. 데스크톱 자료는 기본적으로 `%APPDATA%/H.Dev Studio/workspace`에 저장하고, EXE에 사용자 사진/초안/로그인 자료를 포함하지 않는다.
+공개 글 목록과 계정 로그인 상태를 혼동하지 않는다. 티스토리 Open API는 종료되었으므로 공식 편집 화면을 사용한다. 앱은 로그인 창을 제공하고 사용자가 직접 기존 글 수정/발행을 할 수 있다. 이는 에이전트가 기존 글을 임의로 수정·발행해도 된다는 뜻이 아니다. 인증된 화면 확인 전 편집이나 저장 성공을 주장하지 않는다. 데스크톱 자료는 Windows의 `%APPDATA%/H.Dev Studio/workspace`, macOS의 `~/Library/Application Support/H.Dev Studio/workspace`에 저장하고, EXE에 사용자 사진/초안/로그인 자료를 포함하지 않는다.
 
 준비 상태, 입력 고정, 중복 재실행, 미리보기, 업로드·초안 저장·생성 실패 복구·발행 상태는 `npm test`로 확인한다. `npm run test:desktop`은 외부 접속 없는 편집기 테스트 화면에서 Electron 파일 첨부와 본문·태그·공개 설정을 확인한다. 이 테스트는 실제 티스토리 게시 성공을 증명하지 않는다. `desktop/publish.mjs`의 컨트롤은 로그인된 실제 편집기에서 관찰한 ID를 사용하며 화면이 달라지면 중단한다. `HDEV_PUBLISH_DRY_RUN=1` 개발 실행은 최종 발행 직전에 멈춘다. 배포 EXE에서는 이 개발 옵션을 사용하지 않는다.
 
