@@ -13,7 +13,8 @@
 개발 캡처와 메모를 분석해 초안을 만들고, 필요한 문단만 다듬어 검토한 뒤 티스토리에 발행하는 Windows와 macOS 데스크톱 앱입니다. 이미 발행한 글도 불러와 같은 주소에서 수정할 수 있습니다.
 
 <p align="center">
-  <a href="https://github.com/Hlxecz/blog-automation/releases"><strong>앱 다운로드</strong></a>
+  <a href="https://github.com/Hlxecz/blog-automation/releases/tag/v0.9.5"><strong>Windows 다운로드</strong></a>
+  · <a href="https://github.com/Hlxecz/blog-automation/releases/tag/v0.10.0"><strong>Mac 다운로드</strong></a>
   · <a href="docs/FEATURES.md">기능과 실제 화면</a>
   · <a href="docs/USAGE.md">사용 안내</a>
   · <a href="CHANGELOG.md">변경 내역</a>
