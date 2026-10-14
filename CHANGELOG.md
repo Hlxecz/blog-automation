@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+- macOS CLI 경로 테스트를 임시 설치 경로로 격리해 CI 서버의 Homebrew Node 설치 여부에 따라 결과가 달라지지 않도록 수정합니다. 기존 PATH의 Node가 우선하는 동작도 검사합니다.
+
 ## [0.10.0] - 2026-10-14
 
 - 공통 기능 코드를 유지하며 Windows·macOS 실행/빌드 스크립트, 설정과 안내를 `windows/`·`macos/`로 분리합니다. 빌드 결과와 체크섬도 `dist/<버전>/windows/`·`dist/<버전>/macos/`에 따로 보관합니다. README에 공통 소스 구조와 운영체제별 사용법을 반영합니다.
