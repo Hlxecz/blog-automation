@@ -1,3 +1,4 @@
+import './runtime.mjs';
 // Exercise the real UI with disposable data and offline article/AI fixtures.
 import { app, BrowserWindow } from 'electron';
 import fs from 'node:fs';

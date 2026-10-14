@@ -1,3 +1,4 @@
+import './runtime.mjs';
 // Real app UI with disposable data and an offline category reader. No blog writes.
 import { app, BrowserWindow } from 'electron';
 import fs from 'node:fs';

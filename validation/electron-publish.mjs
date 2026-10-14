@@ -1,3 +1,4 @@
+import './runtime.mjs';
 // Runs the production driver against an isolated, local editor fixture.
 // All HTTPS requests in this session are intercepted; no blog is contacted.
 import { app, BrowserWindow, session } from 'electron';

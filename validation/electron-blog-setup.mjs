@@ -1,3 +1,4 @@
+import './runtime.mjs';
 // First-run setup uses temporary data and no Tistory network or publication.
 import {app,BrowserWindow} from 'electron';
 import fs from 'node:fs';

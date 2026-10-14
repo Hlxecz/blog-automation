@@ -1,3 +1,4 @@
+import './runtime.mjs';
 // Real editor UI with a fake text-only CLI result; never contacts Tistory.
 import { app, BrowserWindow } from 'electron';
 import fs from 'node:fs';

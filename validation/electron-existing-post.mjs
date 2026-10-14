@@ -1,3 +1,4 @@
+import './runtime.mjs';
 // Production existing-post updater against an isolated editor fixture.
 // Every HTTPS request is intercepted; this file cannot modify a real blog.
 import { app, BrowserWindow, session } from 'electron';
