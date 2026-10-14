@@ -13,7 +13,7 @@
 개발 캡처와 메모를 분석해 초안을 만들고, 필요한 문단만 다듬어 검토한 뒤 티스토리에 발행하는 Windows와 macOS 데스크톱 앱입니다. 이미 발행한 글도 불러와 같은 주소에서 수정할 수 있습니다.
 
 <p align="center">
-  <a href="https://github.com/Hlxecz/blog-automation/releases/tag/v0.9.5"><strong>Windows 앱 다운로드</strong></a>
+  <a href="https://github.com/Hlxecz/blog-automation/releases"><strong>앱 다운로드</strong></a>
   · <a href="docs/FEATURES.md">기능과 실제 화면</a>
   · <a href="docs/USAGE.md">사용 안내</a>
   · <a href="CHANGELOG.md">변경 내역</a>
@@ -51,25 +51,10 @@
 
 ## 다운로드
 
-[H.Dev Studio 0.9.5](https://github.com/Hlxecz/blog-automation/releases/tag/v0.9.5)에서 `HDev-Studio-0.9.5-win-x64.exe`를 받습니다. Windows 64비트용 무설치 실행 파일입니다.
+- **Windows x64:** [0.9.5 릴리즈](https://github.com/Hlxecz/blog-automation/releases/tag/v0.9.5)의 무설치 EXE
+- **macOS:** [0.10.0 릴리즈](https://github.com/Hlxecz/blog-automation/releases/tag/v0.10.0)의 `arm64`(Apple Silicon)·`x64`(Intel) DMG 또는 ZIP
 
-Windows에서 처음 받은 서명되지 않은 앱은 Microsoft Defender SmartScreen 안내가 나타날 수 있습니다. 배포 파일의 무결성은 Release에 함께 제공되는 `SHA256SUMS.txt`로 확인할 수 있습니다.
-
-## Mac에서 사용하기
-
-macOS 지원은 **0.10.0** 소스부터 포함됩니다. Apple Silicon(M1 이상)은 `arm64`, Intel Mac은 `x64` 파일을 사용합니다. 기존 Windows 0.9.5 Release에는 Mac 파일이 없습니다.
-
-Node.js 22 이상을 설치한 뒤 터미널에서 실행합니다.
-
-```sh
-npm ci
-npm run setup
-npm run desktop
-```
-
-Finder 실행용 앱을 만들려면 Mac에서 `npm run build:mac`을 실행합니다. `dist/0.10.0/macos/HDev-Studio-0.10.0-mac-<CPU>.dmg`를 열어 **H.Dev Studio.app**을 응용 프로그램 폴더로 옮깁니다. 서명·공증 인증서 없이 빌드한 파일은 macOS가 실행을 제한할 수 있습니다. 직접 빌드한 파일임을 확인한 뒤 시스템 설정 → 개인정보 보호 및 보안에서 허용합니다.
-
-사진·메모·참고자료, AI 초안과 부분 다듬기, 카테고리·말투 설정, 표지·목차·GitHub 카드, 티스토리 로그인·사진 발행·기존 글 수정은 Windows와 같은 코드를 사용합니다. AI 설치 명령은 Mac용으로 표시하며 Homebrew·기본 설치·Node 버전 관리자 경로를 탐색합니다. 창을 닫아도 앱은 Dock에 남고, Dock 아이콘을 클릭하면 같은 작업실을 다시 엽니다. 완전히 종료하려면 `⌘Q`를 사용합니다.
+파일 무결성은 릴리즈의 `SHA256SUMS.txt`로 확인합니다. 운영체제별 설치 안내는 [Windows](windows/README.md)·[macOS](macos/README.md)를 참고하세요.
 
 ## 기술 스택
 
@@ -83,44 +68,30 @@ Finder 실행용 앱을 만들려면 Mac에서 `npm run build:mac`을 실행합�
 | 발행 대상 | Tistory 편집 화면 |
 | 자동 검사 | Node Test Runner, Electron UI 검증, GitHub Actions |
 
-사용자 사진·초안·말투·계정 설정은 앱 자료 폴더에 저장하며 Git과 배포 앱에 포함하지 않습니다. Windows 기본 위치는 `%APPDATA%/H.Dev Studio/workspace`, macOS는 `~/Library/Application Support/H.Dev Studio/workspace`입니다.
+사진·초안·계정 설정은 이 PC에 보관하며 Git과 배포 앱에 포함하지 않습니다.
 
-## 폴더 구조
+## 실행과 빌드
 
-```text
-blog-automation/
-├─ desktop/                 # 공통 Electron 창·티스토리 연결
-├─ scripts/                 # 공통 AI·자료 보관·API·발행 처리
-├─ web/                     # 공통 작업실·편집·미리보기
-├─ config/                  # 공유용 기본 설정과 말투
-├─ windows/                 # Windows 실행·빌드 스크립트와 설정
-├─ macos/                   # macOS 실행·빌드 스크립트와 설정
-├─ test/ · validation/      # 공통 자동 검사와 모의 편집기
-└─ dist/<버전>/
-   ├─ windows/              # Windows EXE·체크섬 (로컬 빌드 결과)
-   └─ macos/                # Mac DMG·ZIP·체크섬 (로컬 빌드 결과)
-```
+Node.js 22 이상을 준비한 뒤 저장소 루트에서 실행합니다.
 
-작업실과 기능 코드를 한 번 수정하면 두 운영체제에 적용됩니다. 운영체제에 따른 CLI 경로·메뉴·창 동작은 공통 코드에서 처리하고 실행·빌드 설정과 안내를 두 폴더에 나눴습니다. 의존성과 버전은 루트의 `package.json`·`package-lock.json`에서 함께 관리합니다.
-
-| 운영체제 | 소스 실행 | 빌드 | 결과 위치 |
-| --- | --- | --- | --- |
-| [Windows 안내](windows/README.md) | `windows/Start-App.ps1` | `npm run build:exe` | `dist/<버전>/windows/` |
-| [macOS 안내](macos/README.md) | `macos/Start-App.command` | `npm run build:mac` | `dist/<버전>/macos/` |
-
-`dist/`와 개인 자료는 Git에 올리지 않습니다. 기존 Windows 다운로드는 0.9.5 Release이며, 0.10.0 Mac 파일은 소스로 빌드하거나 수동 빌드 워크플로의 산출물로 받을 수 있습니다.
-
-## 개발 실행
-
-Windows 64비트 또는 macOS와 Node.js 22 이상이 필요합니다.
-
-```powershell
+```sh
 npm ci
 npm run setup
 npm run desktop
 ```
 
-`npm start`는 브라우저 개발 화면, `npm run desktop`은 티스토리 연결을 포함한 Electron 앱을 실행합니다. 배포용 Windows EXE는 `npm run build:exe`, Mac DMG·ZIP은 `npm run build:mac`으로 만듭니다. macOS의 모든 CPU용 파일은 `npm run build:mac:all`로 빌드합니다.
+| 운영체제 | 지원 | 빌드 명령 | 자세한 안내 |
+| --- | --- | --- | --- |
+| Windows | x64 | `npm run build:exe` | [Windows](windows/README.md) |
+| macOS | Apple Silicon·Intel | `npm run build:mac` | [macOS](macos/README.md) |
+
+빌드 결과는 `dist/<버전>/windows/`·`dist/<버전>/macos/`에 저장합니다. `npm start`는 웹 개발 화면을 엽니다.
+
+## 폴더 구조
+
+- `desktop/`·`scripts/`·`web/`: 두 운영체제가 함께 쓰는 앱 기능과 화면
+- `windows/`·`macos/`: 운영체제별 실행·빌드 스크립트와 안내
+- `config/`: 공유용 기본 설정 / `test/`·`validation/`: 자동 검사
 
 ## 검사
 
