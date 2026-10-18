@@ -15,8 +15,16 @@
 <p align="center">
   <a href="https://github.com/Hlxecz/blog-automation/releases/tag/v0.9.5"><strong>Windows 다운로드</strong></a>
   · <a href="https://github.com/Hlxecz/blog-automation/releases/tag/v0.10.0"><strong>Mac 다운로드</strong></a>
+</p>
+
+<p align="center">
+  📖 <a href="https://hlxecz.tistory.com/30"><strong>사용법 블로그 바로가기 →</strong></a><br>
+  설치부터 티스토리 발행까지, 실제 사용 방법을 블로그에서 확인하세요.
+</p>
+
+<p align="center">
+  <a href="docs/USAGE.md">사용 안내 문서</a>
   · <a href="docs/FEATURES.md">기능과 실제 화면</a>
-  · <a href="docs/USAGE.md">사용 안내</a>
   · <a href="CHANGELOG.md">변경 내역</a>
 </p>
 
