@@ -13,8 +13,8 @@
 개발 캡처와 메모를 분석해 초안을 만들고, 필요한 문단만 다듬어 검토한 뒤 티스토리에 발행하는 Windows와 macOS 데스크톱 앱입니다. 이미 발행한 글도 불러와 같은 주소에서 수정할 수 있습니다.
 
 <p align="center">
-  <a href="https://github.com/Hlxecz/blog-automation/releases/tag/v0.9.5"><strong>Windows 다운로드</strong></a>
-  · <a href="https://github.com/Hlxecz/blog-automation/releases/tag/v0.10.0"><strong>Mac 다운로드</strong></a>
+  <a href="https://github.com/Hlxecz/blog-automation/releases/tag/v0.11.1"><strong>Windows 다운로드</strong></a>
+  · <a href="https://github.com/Hlxecz/blog-automation/releases/tag/v0.11.1"><strong>Mac 다운로드</strong></a>
 </p>
 
 <p align="center">
@@ -69,10 +69,10 @@
 
 ## 다운로드
 
-위 화면은 0.11.1 기준입니다. 아래 링크는 현재 공개된 배포본이며, 새 Mac 빌드 파일은 `dist/0.11.1/macos/`에 생성합니다.
+Windows와 Mac 모두 0.11.1 새 테마를 사용합니다. 아래 릴리즈에서 운영체제와 CPU에 맞는 파일을 받으세요.
 
-- **Windows x64:** [0.9.5 릴리즈](https://github.com/Hlxecz/blog-automation/releases/tag/v0.9.5)의 무설치 EXE
-- **macOS:** [0.10.0 릴리즈](https://github.com/Hlxecz/blog-automation/releases/tag/v0.10.0)의 `arm64`(Apple Silicon)·`x64`(Intel) DMG 또는 ZIP
+- **Windows x64:** [0.11.1 릴리즈](https://github.com/Hlxecz/blog-automation/releases/tag/v0.11.1)의 무설치 EXE
+- **macOS:** [0.11.1 릴리즈](https://github.com/Hlxecz/blog-automation/releases/tag/v0.11.1)의 `arm64`(Apple Silicon)·`x64`(Intel) DMG 또는 ZIP
 
 파일 무결성은 릴리즈의 `SHA256SUMS.txt`로 확인합니다. 운영체제별 설치 안내는 [Windows](windows/README.md)·[macOS](macos/README.md)를 참고하세요.
 
