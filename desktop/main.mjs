@@ -95,7 +95,10 @@ async function openDataFolder() {
 async function createMainWindow() {
   const bundle = app.getAppPath();
   mainWindow = new BrowserWindow({ width: 1261, height: 735, minWidth: 880, minHeight: 680, show: false,
-    backgroundColor: '#000000', ...(isMac ? { titleBarStyle: 'hiddenInset' } : {}),
+    backgroundColor: '#000000',
+    ...(isMac ? { titleBarStyle: 'hiddenInset' } : process.platform === 'win32' ? {
+      titleBarStyle: 'hidden', titleBarOverlay: { color: '#00000000', symbolColor: '#808080', height: 40 }, autoHideMenuBar: true
+    } : {}),
     title: app.isPackaged ? 'H.Dev Studio' : 'H.Dev Studio · 개발 모드', icon: path.join(bundle, 'desktop/assets/icon.png'),
     webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true } });
   protectNavigation(mainWindow, true);

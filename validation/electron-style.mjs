@@ -37,6 +37,20 @@ try {
   const fill = (id,value) => js(`{const input=document.getElementById(${JSON.stringify(id)});input.value=${JSON.stringify(value)};input.dispatchEvent(new Event('input',{bubbles:true}));}`);
   const capture = async name => { await new Promise(resolve=>setTimeout(resolve,220));fs.writeFileSync(path.join(screenshots,`${name}.png`),(await win.webContents.capturePage()).toPNG()); };
   await win.loadURL(origin);console.log('Page loaded');await wait(`document.getElementById('generation-state').textContent.includes('Codex 연결됨')`);console.log('UI loaded');
+  const layouts = new Map();
+  win.webContents.debugger.attach('1.3');
+  for(const [platform,name] of [['MacIntel','mac'],['Win32','windows']]) {
+    await win.webContents.debugger.sendCommand('Emulation.setUserAgentOverride',{userAgent:`Mozilla/5.0 ${name} Electron/44.3.0`,platform});
+    await win.loadURL(origin);await wait(`document.getElementById('generation-state').textContent.includes('Codex 연결됨')`);
+    assert.equal(await js(`document.fonts.ready.then(()=>document.fonts.check('13px "blog Studio Sans"'))`),true,'공통 글꼴을 오프라인으로 불러와야 합니다.');
+    for(const theme of ['dark','light']) {
+      await click(`theme-${theme}`);await capture(`platform-${name}-${theme}`);
+      const layout=await js(`['.window-drag-region','.sidebar','.workspace-heading','.workflow-steps','.source-panel','.draft-panel','.theme-switch'].map(selector=>{const el=document.querySelector(selector),r=el.getBoundingClientRect(),s=getComputedStyle(el);return [r.x,r.y,r.width,r.height,s.fontFamily,s.color,s.background]})`);
+      if(name==='mac')layouts.set(theme,layout);else assert.deepEqual(layout,layouts.get(theme),`${theme} 작업실의 Mac·Windows 배치와 색상은 같아야 합니다.`);
+    }
+  }
+  await win.webContents.debugger.sendCommand('Emulation.setUserAgentOverride',{userAgent:`Mozilla/5.0 Mac Electron/44.3.0`,platform:'MacIntel'});
+  win.webContents.debugger.detach();await click('theme-dark');
   await js(`window.dispatchEvent(new Event('hdev:ai-help'))`);
   await wait(`document.getElementById('ai-connection-status')?.textContent.includes('Codex 연결됨')`);
   await capture('ai-help-codex');
