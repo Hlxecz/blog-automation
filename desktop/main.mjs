@@ -113,7 +113,11 @@ else {
     };
     const updateAdapter = async request => {
       const { createTistoryPostUpdater } = await import(`./publish.mjs?update=${randomUUID()}`);
-      return createTistoryPostUpdater({ openWindow: openTistory })(request);
+      return createTistoryPostUpdater({ openWindow: openTistory,
+        onDryRun: !app.isPackaged && process.env.HDEV_PUBLISH_DRY_RUN === '1' ? async result => {
+          fs.writeFileSync(path.join(dataRoot, 'update-dry-run.json'), JSON.stringify({ title: result.draft.title,
+            url: result.url, imageCount: Object.keys(result.uploaded).length, verifiedAt: new Date().toISOString(), submitted: false }, null, 2));
+        } : null })(request);
     };
     server = createApp({ root: dataRoot, webRoot: path.join(bundle, 'web'), publishAdapter, updateAdapter, categoryReader,
       accountReader: createTistoryAccountReader({ openWindow: openTistory }) });

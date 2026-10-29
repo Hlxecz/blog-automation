@@ -35,8 +35,14 @@ for (const block of draft.blocks.filter(block => block.type === 'rich')) {
 const manifest = { images: [] };
 let omitDateMeta = false;
 let skinHidesTags = false;
+let menuSkin = false;
+let aliasPanel = false;
+let aliasChanged = false;
+let managementRedirect = false;
 
 function managementPage() {
+  if (menuSkin) return '<!doctype html><p>글 목록</p>';
+  if (managementRedirect) return '<!doctype html><ul><li><a href="/17">원문</a><a href="/manage/post/17">수정</a></li></ul>';
   return `<!doctype html><ul id="posts"><li><a href="/17">원문</a><a href="/manage/observed-edit">수정</a></li>
     <li><a href="/18">다른 글</a><a href="/manage/wrong-edit">수정</a></li></ul>`;
 }
@@ -47,7 +53,7 @@ function editorPage(panelPost = '17') {
   <div id="body" contenteditable="true"><figure class="imageblock" data-ke-type="image" data-ke-filename="fresh-editor.png" data-ke-mobilestyle="widthOrigin"><img src="${freshSigned}" data-url="${freshSigned}" alt="원문 사진"><figcaption>원래 설명</figcaption></figure><p style="color:#243b53"><strong>원래 &lt;값&gt; &amp; $&amp;</strong> <a href="https://example.com/docs">연결</a></p></div>
   <div id="tags"></div><input id="tagText"><button id="publish-layer-btn">완료</button>
   <div id="panel" hidden><label><input type="radio" id="open20" checked>공개</label><label><input type="radio" id="open0">비공개</label>
-  <div>https://example.tistory.com/<input id="urlPublish" value="${panelPost}" disabled></div><button id="publish-btn">공개 발행</button></div>
+  <div>https://example.tistory.com / ${aliasPanel ? ' entry / ' : ''}<input id="urlPublish" value="${aliasPanel ? 'original-title' : panelPost}" disabled></div><button id="publish-btn">공개 발행</button></div>
   <script>
   const el=id=>document.getElementById(id),body=el('body'),input=el('tagText');window.submits=0;window.events=[];
   function tag(name){const a=document.createElement('a');a.href='/tag/'+encodeURIComponent(name);a.textContent=name;a.setAttribute('aria-label',name+' 태그 수정');a.onclick=e=>{e.preventDefault();input.value=name;input.dataset.editing=name;input.focus()};el('tags').append(a)}tag('old');
@@ -68,6 +74,9 @@ async function run() {
     assert.equal(url.origin, origin);
     if (url.pathname === '/manage/posts') return new Response(managementPage(), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
     if (url.pathname === '/manage/observed-edit') return new Response(editorPage(panelPost), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+    if (url.pathname === '/manage/newpost/17') return new Response(editorPage(panelPost), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+    if (url.pathname === '/manage/post/17') return Response.redirect(`${origin}/manage/newpost/17`);
+    if (menuSkin && url.pathname === '/17') return new Response(publicPage({ body: originalBody }) + `<button aria-label="더보기" onclick="document.getElementById('edit-menu').hidden=false">더보기</button><div id="edit-menu" hidden><button role="menuitem" onclick="location.href='/manage/post/17'">수정</button></div>`, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
     return new Response(publicPage({ body: originalBody }), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
   });
   let win;
@@ -76,6 +85,7 @@ async function run() {
     win.loadURL(url); return win;
   };
   const fetchPublic = async url => {
+    if (url === `${origin}/entry/original-title`) return new Response(publicPage({ body: aliasChanged ? '<p>다른 글</p>' : originalBody }));
     if (url === `${origin}/rss`) return new Response(`<?xml version="1.0"?><rss><channel><title>fixture</title><item><title>수정한 제목</title><link>${targetUrl}</link><pubDate>${new Date(publishedAt).toUTCString()}</pubDate></item></channel></rss>`, { headers: { 'Content-Type': 'application/xml' } });
     assert.equal(url, targetUrl);
     const html = await win.webContents.executeJavaScript('window.published || null');
@@ -100,6 +110,43 @@ async function run() {
     assert.match(saved, /fresh-editor\.png/); assert.doesNotMatch(saved, /credential=old/);
     assert.match(saved, /바꾼 사진 설명/); assert.match(saved, /수정 &lt;값&gt; &amp; \$&amp;/);
     assert.equal((await win.webContents.executeJavaScript('document.getElementById("open20").checked')), true);
+    win.destroy();
+
+    let dryRunReached = false;
+    const dryUpdater = createTistoryPostUpdater({ openWindow, fetchPublic, onDryRun: async result => {
+      dryRunReached = true;
+      assert.equal(result.url, targetUrl);
+      assert.equal(await win.webContents.executeJavaScript('window.submits'), 0);
+    } });
+    await assert.rejects(dryUpdater({ ...request,
+      checkRemote: async () => assert.fail('dry run must stop before submission'),
+      beforeSubmit: () => assert.fail('dry run must never mark submission') }), /검증 모드/);
+    assert.equal(dryRunReached, true);
+    assert.equal(await win.webContents.executeJavaScript('window.submits'), 0);
+    win.destroy();
+
+    menuSkin = true; aliasPanel = true;
+    await assert.rejects(dryUpdater({ ...request,
+      checkRemote: async () => assert.fail('dry run must stop before submission'),
+      beforeSubmit: () => assert.fail('dry run must never submit') }), /검증 모드/);
+    assert.equal(await win.webContents.executeJavaScript('window.submits'), 0);
+    win.destroy();
+    aliasChanged = true;
+    await assert.rejects(dryUpdater({ ...request, checkRemote: async () => {}, beforeSubmit: () => assert.fail('wrong alias must never submit') }), /문자 주소.*원문/);
+    assert.equal(await win.webContents.executeJavaScript('window.submits'), 0);
+    win.destroy(); menuSkin = false; aliasPanel = false; aliasChanged = false;
+
+    managementRedirect = true; aliasPanel = true;
+    const redirectedResult = await updater({ ...request, checkRemote: async () => {}, beforeSubmit: () => {} });
+    assert.equal(redirectedResult.url, targetUrl);
+    assert.equal(await win.webContents.executeJavaScript('window.submits'), 1);
+    win.destroy(); managementRedirect = false; aliasPanel = false;
+
+    const thumbnail = 'https://img1.daumcdn.net/thumb/R1280x0/?fname=' + encodeURIComponent(oldSigned);
+    const thumbArticle = parsePublicArticle(publicPage({ body: originalBody.replaceAll(oldSigned, thumbnail) }), targetUrl, origin);
+    await assert.rejects(dryUpdater({ ...request, draft: thumbArticle.draft, currentSource: thumbArticle.source,
+      checkRemote: async () => {}, beforeSubmit: () => assert.fail('dry run must never submit') }), /검증 모드/);
+    assert.equal(await win.webContents.executeJavaScript('window.submits'), 0);
     win.destroy();
 
     skinHidesTags = true;

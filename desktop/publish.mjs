@@ -75,6 +75,18 @@ function editorCommand(command, data) {
     if (!target || normalizedPost(location.href) !== target) return null;
     return editAnchor(document)?.href || null;
   }
+  // Observed on the Book Club skin on 2026-10-29: edit is a menu item,
+  // revealed by 더보기, rather than an anchor with an editor URL.
+  if (command === 'publicOpenEdit') {
+    const target = normalizedPost(data.targetUrl);
+    if (!target || normalizedPost(location.href) !== target) return false;
+    const items = [...document.querySelectorAll('[role="menuitem"]')].filter(el => visible(el) && el.textContent.trim() === '수정');
+    if (items.length === 1) { items[0].click(); return true; }
+    const buttons = [...document.querySelectorAll('button')].filter(el => visible(el) &&
+      (el.textContent.trim() === '더보기' || el.getAttribute('aria-label') === '더보기' || el.querySelector('img[alt="더보기"]')));
+    if (buttons.length === 1) buttons[0].click();
+    return false;
+  }
   // Observed on /manage/posts on 2026-09-18. Read the view filter without opening an editor.
   if (command === 'managementCategories') {
     const button = [...document.querySelectorAll('.opt_blog > button.btn_opt')].find(el => visible(el) && el.textContent.trim() === '보기');
@@ -211,7 +223,7 @@ function editorCommand(command, data) {
     // Read the permalink shown by Tistory instead of deriving a slug from the title.
     let parent = slug.parentElement, prefix;
     for (let depth = 0; parent && depth < 4; depth++, parent = parent.parentElement) {
-      prefix = parent.textContent.match(/https:\/\/[a-z0-9-]+\.tistory\.com\/(?:entry\/)?/i)?.[0];
+      prefix = parent.textContent.replace(/\s+/g, '').match(/https:\/\/[a-z0-9-]+\.tistory\.com\/(?:entry\/)?/i)?.[0];
       if (prefix) break;
     }
     const candidate = prefix && slug.value ? new URL(slug.value, prefix).href : null;
@@ -395,7 +407,7 @@ function updatedPublicationHtml({ draft, manifest, uploadedMarkup, editorImages,
   const $ = load(html, null, false);
   const existing = new Map();
   for (const image of editorImages) {
-    const stable = stableRemoteUrl(image.dataUrl || image.src, blogUrl);
+    const stable = remoteImageIdentity(image.dataUrl || image.src, blogUrl);
     if (!stable || typeof image.markup !== 'string') continue;
     const values = existing.get(stable) || [];
     values.push(cleanEditorMarkup(image.markup)); existing.set(stable, values);
@@ -406,12 +418,13 @@ function updatedPublicationHtml({ draft, manifest, uploadedMarkup, editorImages,
     for (const image of block.images) {
       const stable = stableRemoteUrl(image?.url || image?.stableUrl, blogUrl);
       if (!image?.sourceKey || !stable || stable !== image.stableUrl) error('원문 사진 정보가 손상됐습니다. 글을 다시 불러와 주세요.');
-      declared.set(stable, (declared.get(stable) || 0) + 1);
+      const identity = remoteImageIdentity(stable, blogUrl);
+      declared.set(identity, (declared.get(identity) || 0) + 1);
     }
   }
   const used = new Map();
   $('img').each((_, element) => {
-    const stable = stableRemoteUrl($(element).attr('data-url') || $(element).attr('src'), blogUrl);
+    const stable = remoteImageIdentity($(element).attr('data-url') || $(element).attr('src'), blogUrl);
     if (!stable || !declared.has(stable)) return;
     const options = existing.get(stable);
     if (!options?.length) error('편집기에서 원문 사진의 안전한 연결 정보를 찾지 못했습니다. 글을 다시 불러와 주세요.');
@@ -569,14 +582,27 @@ export function createTistoryPostUpdater({ openWindow, fetchPublic = fetch, onDr
       if (!editLink) {
         await wc.loadURL(target.url);
         editLink = await until(async () => {
-          if (wc.isLoadingMainFrame() || normalizePostUrl(wc.getURL(), origin) !== target.url) return null;
-          return evalEditor('publicEditLink', { targetUrl: target.url });
+          if (wc.isLoadingMainFrame()) return null;
+          const location = new URL(wc.getURL());
+          if (location.origin === origin && location.pathname.startsWith('/manage/')) return location.href;
+          if (normalizePostUrl(wc.getURL(), origin) !== target.url) return null;
+          const link = await evalEditor('publicEditLink', { targetUrl: target.url });
+          if (link) return link;
+          await evalEditor('publicOpenEdit', { targetUrl: target.url });
+          return null;
         }, '원문 화면에서 이 글의 “수정” 연결을 확인하지 못했습니다. 로그인한 계정의 운영 블로그와 원문을 확인해 주세요.', 30000);
       }
-      const editUrl = new URL(editLink);
+      let editUrl = new URL(editLink);
       if (editUrl.origin !== origin || !editUrl.pathname.startsWith('/manage/')) error('원문의 수정 주소를 확인하지 못했습니다.');
-      await wc.loadURL(editUrl.href);
+      if (wc.getURL() !== editUrl.href) await wc.loadURL(editUrl.href);
       await until(() => evalEditor('ready'), '기존 글 편집기가 열리지 않았습니다.');
+      if (wc.getURL() !== editUrl.href) {
+        const redirected = new URL(wc.getURL());
+        const postId = url => /^\/manage\/(?:post|newpost)\/(\d+)$/.exec(url.pathname)?.[1];
+        if (redirected.origin !== origin || !postId(editUrl) || postId(editUrl) !== postId(redirected))
+          error('열린 편집기 주소가 원문의 수정 연결과 다릅니다. 저장하지 않았습니다.');
+        editUrl = redirected;
+      }
       const snapshot = await evalEditor('snapshot');
       if (snapshot.title.trim() !== currentSource.title.trim()) error('열린 편집기가 선택한 원문과 다릅니다. 저장하지 않았습니다.');
       const sourceTagsKnown = currentSource.tagsObserved === true || (currentSource.tagsObserved !== false && (currentSource.tags || []).length > 0);
@@ -585,9 +611,9 @@ export function createTistoryPostUpdater({ openWindow, fetchPublic = fetch, onDr
       // A skin may hide tags on the public page. Keep the editor's tags unless
       // the user explicitly entered tags in the imported draft.
       const expectedTags = sourceTagsKnown || draft.tags.length ? draft.tags : snapshot.tags;
-      const expectedRemote = currentSource.templates ? Object.values(currentSource.templates).flatMap(template => template.images || []).map(image => image.stableUrl) : [];
-      const editorRemote = snapshot.images.map(image => stableRemoteUrl(image.dataUrl || image.src, origin)).filter(Boolean);
-      if (expectedRemote.some(url => !editorRemote.includes(url))) error('열린 편집기의 사진이 선택한 원문과 다릅니다. 저장하지 않았습니다.');
+      const expectedRemote = currentSource.templates ? Object.values(currentSource.templates).flatMap(template => template.images || []).map(image => remoteImageIdentity(image.stableUrl, origin)) : [];
+      const editorRemote = snapshot.images.map(image => remoteImageIdentity(image.dataUrl || image.src, origin)).filter(Boolean);
+      if (expectedRemote.some(url => !editorRemote.includes(url))) error('열린 편집기의 사진이 선택한 원문과 다릅니다. 슬라이드 사진처럼 편집기에 일부 사진만 표시되는 글은 현재 자동으로 수정할 수 없습니다. 저장하지 않았습니다.');
       await selectCategory(session, draft.category);
       const files = [...new Set(articleBlocks(draft).filter(block => block.type === 'image').map(block => block.file))];
       const { uploadedMarkup, uploaded } = await uploadEditorFiles({ session, files, directory, onProgress });
@@ -600,7 +626,16 @@ export function createTistoryPostUpdater({ openWindow, fetchPublic = fetch, onDr
       await until(() => evalEditor('click', { id: 'publish-layer-btn', text: '완료' }), '저장 설정 버튼을 찾지 못했습니다.');
       const panel = await until(() => evalEditor('panel'), '티스토리 저장 설정이 열리지 않았습니다.');
       if (!panel.public || panel.reserved) error('원문의 공개 상태를 그대로 확인할 수 없어 저장하지 않았습니다.');
-      if (!panel.url || normalizePostUrl(panel.url, origin) !== target.url) error('편집기의 글 주소가 선택한 원문과 다릅니다. 저장하지 않았습니다.');
+      if (!panel.url) error('편집기의 글 주소를 확인하지 못했습니다. 저장하지 않았습니다.');
+      if (normalizePostUrl(panel.url, origin) !== target.url) {
+        // Tistory displays the /entry/ alias even for a numeric public permalink.
+        const editorPostId = /^\/manage\/(?:post|newpost)\/(\d+)$/.exec(editUrl.pathname)?.[1];
+        if (!target.postId || editorPostId !== target.postId || !new URL(panel.url).pathname.startsWith('/entry/'))
+          error('편집기의 글 주소가 선택한 원문과 다릅니다. 저장하지 않았습니다.');
+        const response = await fetchPublic(panel.url, { redirect: 'manual', credentials: 'omit', signal: AbortSignal.timeout(10000) });
+        if (!response.ok || parsePublicArticle(await response.text(), panel.url, origin).source.digest !== currentSource.digest)
+          error('편집기의 문자 주소에서 원문 일치를 확인하지 못했습니다. 저장하지 않았습니다.');
+      }
       if (panel.text !== '공개 발행') error('기존 글의 저장 버튼을 확인하지 못했습니다.');
       if (!await evalEditor('verify', { title: draft.title, html })) error('저장 직전 내용이 변경됐습니다. 다시 확인해 주세요.');
       if (draft.category && !await evalEditor('categorySelected', { name: draft.category.id === '0' ? '카테고리' : draft.category.path.at(-1) })) error('저장 직전 카테고리가 변경됐습니다.');
