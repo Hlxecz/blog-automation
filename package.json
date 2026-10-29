@@ -1,7 +1,7 @@
 {
   "name": "tistory-draft-workflow",
   "private": true,
-  "version": "0.9.5",
+  "version": "0.11.1",
   "description": "H.Dev Studio - 개발 캡처와 티스토리 글 작업실",
   "author": "H.Dev",
   "main": "desktop/main.mjs",
@@ -24,7 +24,10 @@
     "desktop": "electron .",
     "release:check": "node scripts/release.mjs check",
     "release:checksums": "node scripts/release.mjs checksums",
-    "build:exe": "node scripts/release.mjs build"
+    "build:exe": "node scripts/release.mjs build",
+    "build:mac": "node scripts/release.mjs build-mac",
+    "build:mac:all": "node scripts/release.mjs build-mac --all",
+    "test:lifecycle": "electron validation/electron-lifecycle.mjs"
   },
   "devDependencies": {
     "electron": "44.3.0",
@@ -51,13 +54,6 @@
     ],
     "asarUnpack": [
       "desktop/publish.mjs"
-    ],
-    "win": {
-      "target": "portable",
-      "icon": "desktop/assets/icon.ico"
-    },
-    "portable": {
-      "artifactName": "HDev-Studio-${version}-win-x64.exe"
-    }
+    ]
   }
 }

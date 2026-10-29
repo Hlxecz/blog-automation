@@ -1,4 +1,4 @@
-name: Windows checks
+name: Desktop checks
 
 on:
   push:
@@ -11,7 +11,11 @@ permissions:
 
 jobs:
   test:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, macos-15-intel]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
@@ -24,6 +28,17 @@ jobs:
       - run: npm ci
       - run: npm run setup
       - run: npm run release:check
+      - name: Validate Windows launcher scripts
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $scripts = @('Start-App.ps1') + @(Get-ChildItem windows/*.ps1 | ForEach-Object FullName)
+          foreach ($script in $scripts) {
+            $tokens = $null
+            $parseErrors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $script).Path, [ref]$tokens, [ref]$parseErrors) | Out-Null
+            if ($parseErrors.Count) { throw ($parseErrors | Out-String) }
+          }
       - run: npm test
       - run: npm run test:desktop
       - run: npm run test:categories
@@ -32,3 +47,5 @@ jobs:
       - run: npm run test:account
       - run: npm run test:refine
       - run: npm run test:existing
+      - run: npm run test:lifecycle
+        if: runner.os == 'macOS'

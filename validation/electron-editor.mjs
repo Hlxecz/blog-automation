@@ -1,3 +1,4 @@
+import './runtime.mjs';
 // Exercise draft editing with disposable local data; never call AI or publish a post.
 import { app, BrowserWindow } from 'electron';
 import fs from 'node:fs';

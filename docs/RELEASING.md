@@ -49,7 +49,7 @@
 생성 파일:
 
 ```text
-dist/<버전>/
+dist/<버전>/windows/
   HDev-Studio-<버전>-win-x64.exe
   SHA256SUMS.txt
   release.json
@@ -60,6 +60,22 @@ dist/<버전>/
 0.4.0부터 빌드에는 `config/`의 공유용 기본값을 포함합니다. 0.8.0는 사용자 요청에 따라 H.Dev Log 말투 프로필 6,408자 사본을 `config/style.example.md`에 포함합니다. 로컬 `tistory.config.json`, 말투 프로필·참고 원문, AI 선택값, 사진·초안·로그인 자료는 빌드 대상에 포함하지 않습니다. 처음 실행한 PC에 기본 설정을 만들며, 기존 PC에서는 수정하지 않은 구버전 기본 지침만 백업 후 교체하고 사용자가 수정한 말투·기존 설정은 유지합니다.
 
 EXE 실행, 사진 업로드, 초안 열기·편집·표지, 자료 폴더 열기를 확인한 뒤 배포합니다. 자동 검증은 실제 블로그에 테스트 글을 발행하지 않습니다. 티스토리 화면 변경 등 실제 계정에서 확인하지 못한 항목은 배포 설명에 적습니다.
+
+## Mac 앱 빌드
+
+Mac에서 공통 검사와 Electron 기능 검사를 통과한 뒤 실행합니다.
+
+```sh
+npm run test:lifecycle
+npm run build:mac      # 현재 Mac의 CPU
+# 두 CPU 모두 빌드할 때: npm run build:mac:all
+```
+
+`dist/<버전>/macos/HDev-Studio-<버전>-mac-arm64.dmg`·`.zip` 또는 `mac-x64.dmg`·`.zip`을 만듭니다. DMG의 앱을 응용 프로그램 폴더로 옮기거나 ZIP을 풀어 사용합니다. `.app` 밖의 Electron userData에 자료·로그인 세션을 보관합니다. 설정·사진·초안·쿠키는 배포 파일에 포함하지 않습니다.
+
+`windows/electron-builder.cjs`와 `macos/electron-builder.cjs`는 루트의 공통 빌드 설정에 각 운영체제 설정을 더합니다. `SHA256SUMS.txt`와 `release.json`은 `dist/<버전>/windows/`, `dist/<버전>/macos/`에서 해당 운영체제의 파일만 기록합니다. `npm run release:checksums`는 존재하는 두 폴더의 확인 파일을 각각 갱신합니다. 빌드 도구는 이미 있는 대상 배포 파일을 덮어쓰지 않습니다. `.github/workflows/build-mac.yml`은 Apple Silicon·Intel 러너에서 검사 후 각 CPU 파일을 빌드하며 수동 실행합니다. 공통 CI도 Windows와 두 Mac 환경을 검사합니다.
+
+인증서가 없으면 서명·공증되지 않은 개발 배포본입니다. 정식 배포에는 electron-builder의 `CSC_LINK`·`CSC_KEY_PASSWORD`와 Apple 공증 환경 변수를 안전한 CI 비밀 설정으로 제공하세요. 인증서와 계정 비밀은 저장소에 넣지 않습니다. 이 변경은 새 GitHub Release를 자동 공개하지 않습니다.
 
 ## GitHub에 다음 변경 올리기
 
@@ -118,9 +134,11 @@ git push origin main
 
 ## GitHub 검사와 배포
 
-- **Windows checks:** `main`에 push하거나 PR을 만들면 설정 초기화, 버전 검사, Node 테스트와 Electron 편집기·카테고리·글쓰기 프롬프트 화면 검증을 실행합니다. 모의 목록과 임시 자료 폴더에서 선택 보관·재생성 시 유지·목록 읽기 실패 복구·카테고리 지침 적용·기본 프롬프트 보존·모바일 배치를 확인합니다.
+- **Desktop checks:** `main`에 push하거나 PR을 만들면 Windows·Apple Silicon·Intel 환경에서 설정 초기화, 버전 검사, Node 테스트와 Electron 편집기·카테고리·글쓰기 프롬프트 화면 검증을 실행합니다. 모의 목록과 임시 자료 폴더에서 선택 보관·재생성 시 유지·목록 읽기 실패 복구·카테고리 지침 적용·기본 프롬프트 보존·모바일 배치를 확인합니다.
 - **Build Windows EXE:** Actions 화면에서 수동으로 실행합니다. 같은 검사를 거쳐 EXE와 확인 파일을 다운로드 가능한 산출물로 보관합니다. 산출물은 14일 후 만료됩니다.
-- 두 작업은 저장소 읽기 권한을 사용합니다. GitHub Release나 태그를 자동 생성하지 않습니다. 실행 결과는 저장소의 Actions 화면에서 확인합니다.
+- **Build macOS app:** Actions에서 수동 실행하며 Apple Silicon·Intel DMG·ZIP과 확인 파일을 산출물로 보관합니다.
+- **Publish verified release:** 성공한 Windows·Mac 빌드의 실행 번호, 두 빌드가 사용한 전체 소스 커밋 SHA, 버전을 입력해 수동 실행합니다. 제목이 `H.Dev Studio <버전> · …`인 릴리즈 초안을 하나 먼저 작성해야 합니다. 두 빌드가 같은 `main` 커밋을 사용했는지, 다섯 설치 파일의 버전·크기·체크섬이 맞는지 확인한 뒤 초안에 첨부합니다. 업로드한 파일의 해시를 다시 확인하고 해당 소스 커밋을 가리키는 버전 태그와 함께 공개합니다. 이미 공개된 버전은 덮어쓰지 않습니다.
+- 검사와 두 빌드 작업은 저장소 읽기 권한만 사용하며 GitHub Release나 태그를 만들지 않습니다. 수동 배포 작업만 릴리즈 쓰기 권한을 사용합니다. 실행 결과는 저장소의 Actions 화면에서 확인합니다.
 
 새 버전을 배포할 때는 **실제로 빌드한 소스 커밋**에 `v<버전>` 태그를 붙여 푸시합니다. 필요하면 해당 태그의 GitHub Release에 EXE·`SHA256SUMS.txt`·`release.json`을 첨부하고 변경 내역과 검증 범위를 적습니다. 이미 있는 태그를 덮어쓰지 않습니다. 이전 EXE의 소스가 없으면 현재 코드에 과거 버전 태그를 붙이지 않습니다.
 

@@ -1,3 +1,4 @@
+import './runtime.mjs';
 import { app, BrowserWindow } from 'electron';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

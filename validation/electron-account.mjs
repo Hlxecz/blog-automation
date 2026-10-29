@@ -1,3 +1,4 @@
+import './runtime.mjs';
 // Production account reader + real app UI. All Tistory pages are offline fixtures.
 import { app, BrowserWindow, session } from 'electron';
 import fs from 'node:fs';

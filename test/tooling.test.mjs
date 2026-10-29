@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { setup } from '../scripts/setup.mjs';
-import { checksums, releaseInfo } from '../scripts/release.mjs';
+import { buildPlan, checksums, releaseInfo } from '../scripts/release.mjs';
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hdev-tooling-test-'));
@@ -36,7 +36,7 @@ test('fresh setup creates required local files and preserves subsequent user edi
 test('release checks reject inconsistent versions and undocumented releases', t => {
   const root = fixture(t);
   assert.deepEqual(releaseInfo(root), {
-    version: '1.2.3', directory: path.join(root, 'dist', '1.2.3'), filename: 'HDev-Studio-1.2.3-win-x64.exe'
+    version: '1.2.3', directory: path.join(root, 'dist', '1.2.3', 'windows'), filename: 'HDev-Studio-1.2.3-win-x64.exe'
   });
   for (const lock of [
     { version: '1.2.4', packages: { '': { version: '1.2.3' } } },
@@ -65,4 +65,33 @@ test('checksum metadata matches bytes and does not change the existing artifact'
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(info.directory, 'release.json'))), {
     version: info.version, filename: info.filename, bytes: bytes.length, sha256: expected
   });
+});
+
+test('platform build configurations and checksums stay in separate output folders', t => {
+  const root = fixture(t);
+  assert.throws(() => buildPlan('build', { platform: 'darwin', root }), /build:mac/);
+  assert.throws(() => buildPlan('build-mac', { platform: 'win32', root }), /macOS/);
+  assert.throws(() => releaseInfo(root, { platform: 'darwin', arch: '../outside' }), /지원하는/);
+  const plan = buildPlan('build-mac', { platform: 'darwin', arch: 'arm64', root });
+  assert.deepEqual(plan.args, ['--config', 'macos/electron-builder.cjs', '--mac', 'dmg', 'zip', '--arm64', '--publish', 'never']);
+  const all = buildPlan('build-mac', { platform: 'darwin', all: true, root });
+  assert.deepEqual(all.args, ['--config', 'macos/electron-builder.cjs', '--mac', 'dmg', 'zip', '--arm64', '--x64', '--publish', 'never']);
+  assert.equal(all.filenames.length, 4);
+  fs.mkdirSync(plan.info.directory, { recursive: true });
+  for (const name of all.filenames) fs.writeFileSync(path.join(plan.info.directory, name), name);
+  const windows = buildPlan('build', { platform: 'win32', root });
+  assert.deepEqual(windows.args, ['--config', 'windows/electron-builder.cjs', '--win', 'portable', '--x64', '--publish', 'never']);
+  assert.notEqual(windows.info.directory, plan.info.directory);
+  fs.mkdirSync(windows.info.directory, { recursive: true });
+  fs.writeFileSync(path.join(windows.info.directory, windows.info.filename), 'Windows file');
+  fs.writeFileSync(path.join(plan.info.directory, 'unrelated.zip'), 'ignore');
+  const result = checksums(root, { platform: 'darwin' });
+  assert.equal(result.artifacts.length, 4);
+  for (const artifact of result.artifacts) {
+    assert.equal(artifact.sha256, createHash('sha256').update(artifact.filename).digest('hex'));
+  }
+  assert.equal(fs.readFileSync(path.join(plan.info.directory, 'SHA256SUMS.txt'), 'utf8').includes('unrelated.zip'), false);
+  assert.equal(fs.readFileSync(path.join(plan.info.directory, 'SHA256SUMS.txt'), 'utf8').includes('win-x64.exe'), false);
+  assert.equal(checksums(root).filename, windows.info.filename);
+  assert.equal(fs.readFileSync(path.join(windows.info.directory, 'SHA256SUMS.txt'), 'utf8').includes('mac-'), false);
 });

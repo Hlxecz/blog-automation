@@ -2,20 +2,22 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { spawn } from 'node:child_process';
+import { cliEnvironment, findExecutable } from './cli-runtime.mjs';
 
 export const providers = { codex: 'Codex', claude: 'Claude Code' };
-export function cliCommand(provider) {
+export function cliCommand(provider, { platform = process.platform, env = cliEnvironment(), home = os.homedir(), electron = process.versions.electron } = {}) {
   if (!Object.hasOwn(providers, provider)) throw new Error('지원하지 않는 AI입니다.');
   const asCommand = file => /\.[cm]?js$/i.test(file)
-    ? { command: process.versions.electron ? 'node' : process.execPath, prefix: [file] }
+    ? { command: electron ? findExecutable(platform === 'win32' ? 'node.exe' : 'node', env, platform) || 'node' : process.execPath, prefix: [file] }
     : { command: file, prefix: [] };
-  const override = process.env[provider === 'codex' ? 'TISTORY_CODEX_BIN' : 'TISTORY_CLAUDE_BIN'];
+  const override = env[provider === 'codex' ? 'TISTORY_CODEX_BIN' : 'TISTORY_CLAUDE_BIN'];
   if (override) return asCommand(override);
-  const candidates = [path.join(os.homedir(), '.local', 'bin', `${provider}${process.platform === 'win32' ? '.exe' : ''}`)];
-  if (process.platform === 'win32') {
-    for (const dir of (process.env.PATH || '').split(path.delimiter)) candidates.push(path.join(dir.replace(/^"|"$/g, ''), `${provider}.exe`));
-    candidates.push(path.join(process.env.LOCALAPPDATA || '', 'Microsoft', 'WinGet', 'Links', `${provider}.exe`));
-    const base = path.join(process.env.APPDATA || '', 'npm', 'node_modules');
+  if (platform !== 'win32') return asCommand(findExecutable(provider, env, platform) || provider);
+  const candidates = [path.join(home, '.local', 'bin', `${provider}.exe`)];
+  if (platform === 'win32') {
+    for (const dir of (env.PATH || '').split(';')) candidates.push(path.join(dir.replace(/^"|"$/g, ''), `${provider}.exe`));
+    candidates.push(path.join(env.LOCALAPPDATA || '', 'Microsoft', 'WinGet', 'Links', `${provider}.exe`));
+    const base = path.join(env.APPDATA || '', 'npm', 'node_modules');
     if (provider === 'codex') {
       candidates.push(path.join(base, '@openai/codex/node_modules/@openai/codex-win32-x64/vendor/x86_64-pc-windows-msvc/bin/codex.exe'));
       candidates.push(path.join(base, '@openai/codex/bin/codex.js'));
@@ -30,7 +32,7 @@ export function checkAI(provider = 'codex') {
   return new Promise(resolve => {
     let output = '', settled = false;
     const finish = status => { if (settled) return; settled = true; clearTimeout(timer); resolve({ provider, status, connected: status === 'connected' }); };
-    const child = spawn(command, [...prefix, ...(provider === 'codex' ? ['login', 'status'] : ['auth', 'status'])], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(command, [...prefix, ...(provider === 'codex' ? ['login', 'status'] : ['auth', 'status'])], { env: cliEnvironment(), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
     const timer = setTimeout(() => { child.kill(); finish('timeout'); }, 10000);
     child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
     const collect = chunk => { output = (output + chunk).slice(-16000); };
@@ -69,7 +71,7 @@ export function runAIJson({ provider = 'codex', root, schemaFile, resultFile, sc
     args.push('-');
   }
   return new Promise((resolve, reject) => {
-    const child = spawn(command, [...prefix, ...args], { cwd: root, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn(command, [...prefix, ...args], { cwd: root, env: cliEnvironment(), windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
     let line = '', failure = '', resultEvent, finished = false;
     const finish = (error, result) => { if (finished) return; finished = true; clearTimeout(timer); error ? reject(error) : resolve(result); };
     const timer = setTimeout(() => { child.kill(); finish(new Error('AI 작업 시간이 길어져 중단했습니다. 자료를 줄여 다시 시도해 주세요.')); }, 12 * 60 * 1000);

@@ -490,8 +490,9 @@ async function replaceEditorTags(session, tags) {
   for (const tag of await evalEditor('tags')) {
     if (!await evalEditor('tagEdit', { tag })) error(`기존 태그 “${tag}”를 수정할 수 없습니다.`);
     await until(() => evalEditor('tagEditing', { tag }), `기존 태그 “${tag}” 편집을 확인하지 못했습니다.`, 5000);
-    wc.sendInputEvent({ type: 'keyDown', keyCode: 'A', modifiers: ['control'] });
-    wc.sendInputEvent({ type: 'keyUp', keyCode: 'A', modifiers: ['control'] });
+    // Use the native editing command so both macOS and Windows select the
+    // focused input's contents, including when the editor is not foreground.
+    wc.selectAll();
     wc.sendInputEvent({ type: 'keyDown', keyCode: 'Backspace' }); wc.sendInputEvent({ type: 'keyUp', keyCode: 'Backspace' });
     wc.sendInputEvent({ type: 'keyDown', keyCode: 'Return' }); wc.sendInputEvent({ type: 'keyUp', keyCode: 'Return' });
     await until(async () => !(await evalEditor('tags')).includes(tag), `기존 태그 “${tag}”를 제거하지 못했습니다.`, 5000);

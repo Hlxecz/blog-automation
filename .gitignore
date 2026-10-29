@@ -38,3 +38,7 @@ storage-state*.json
 runtime.json
 .DS_Store
 Thumbs.db
+
+# macOS application artifacts
+*.dmg
+*.app/

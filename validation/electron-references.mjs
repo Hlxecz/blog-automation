@@ -1,3 +1,4 @@
+import './runtime.mjs';
 // Test only disposable photos and offline reference/AI responses.
 import { app, BrowserWindow } from 'electron';
 import fs from 'node:fs';

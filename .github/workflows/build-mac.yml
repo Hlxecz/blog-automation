@@ -1,0 +1,50 @@
+name: Build macOS app
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run setup
+      - run: npm run release:check
+      - run: npm test
+      - run: npm run test:desktop
+      - run: npm run test:categories
+      - run: npm run test:writing
+      - run: npm run test:setup
+      - run: npm run test:account
+      - run: npm run test:refine
+      - run: npm run test:existing
+      - run: npm run test:lifecycle
+      - run: npm run build:mac
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - uses: actions/upload-artifact@v7
+        with:
+          name: hdev-studio-mac-${{ runner.arch }}-${{ github.run_number }}
+          path: |
+            dist/*/macos/HDev-Studio-*-mac-*.dmg
+            dist/*/macos/HDev-Studio-*-mac-*.zip
+            dist/*/macos/SHA256SUMS.txt
+            dist/*/macos/release.json
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14

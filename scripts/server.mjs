@@ -27,7 +27,7 @@ const write = (file, value) => { const temp = `${file}.tmp`; fs.writeFileSync(te
 const exists = fs.existsSync;
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 const fail = (condition, message, status = 400) => { if (!condition) throw Object.assign(new Error(message), { status }); };
-const MIME = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.js': 'text/javascript', '.css': 'text/css', '.html': 'text/html' };
+const MIME = { '.woff2': 'font/woff2', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.js': 'text/javascript', '.css': 'text/css', '.html': 'text/html' };
 
 export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), generator = generate, refiner = refineWriting, checkGenerator = checkAI, fetchPublic = fetch, publishAdapter = null, updateAdapter = null, categoryReader = null, accountReader = null, styleAnalyzer, fetchStyle, fetchReference, notionReader } = {}) {
   const c = json(path.join(root, 'tistory.config.json'));
@@ -305,7 +305,7 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
         } finally { importingPosts=false; }
       }
       if (route === '/api/bootstrap' && req.method === 'GET') { await connectionCheck; return sendJson(res, {
-        token, blogUrl: c.blogUrl, blogConfigured: blogConfigured(c.blogUrl), tistory: accountState(), connected: ai.connected, ai, canPublish: !!publishAdapter, canUpdate:!!updateAdapter, categories: categories.state(), writingPrompts: writingPrompts.state(),
+        token, platform: process.platform, blogUrl: c.blogUrl, blogConfigured: blogConfigured(c.blogUrl), tistory: accountState(), connected: ai.connected, ai, canPublish: !!publishAdapter, canUpdate:!!updateAdapter, categories: categories.state(), writingPrompts: writingPrompts.state(),
         style: exists(path.resolve(root, c.styleProfile)) ? fs.readFileSync(path.resolve(root, c.styleProfile), 'utf8') : ''
       }); }
       if (route === '/api/jobs' && req.method === 'GET') {
@@ -549,7 +549,7 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
         fail(false, '요청한 기능을 찾을 수 없습니다.', 404);
       }
       if (req.method === 'GET' && route === '/article.css') { res.writeHead(200, { 'Content-Type':'text/css; charset=utf-8' }); return res.end(articleCss); }
-      const staticFiles = { '/': 'index.html', '/app.js': 'app.js', '/ai-help.js': 'ai-help.js', '/style-settings.js': 'style-settings.js', '/category-prompts.js': 'category-prompts.js', '/draft-model.js':'draft-model.js', '/article-renderer.js':'article-renderer.js', '/styles.css': 'styles.css', '/favicon.svg': 'favicon.svg', '/favicon.png': 'favicon.png', '/logo.png': 'logo.png' };
+      const staticFiles = { '/': 'index.html', '/app.js': 'app.js', '/theme.js': 'theme.js', '/fonts/PretendardVariable.woff2': 'fonts/PretendardVariable.woff2', '/ai-help.js': 'ai-help.js', '/style-settings.js': 'style-settings.js', '/category-prompts.js': 'category-prompts.js', '/draft-model.js':'draft-model.js', '/article-renderer.js':'article-renderer.js', '/styles.css': 'styles.css', '/favicon.svg': 'favicon.svg', '/favicon.png': 'favicon.png', '/logo.png': 'logo.png' };
       if (req.method === 'GET' && Object.hasOwn(staticFiles, route)) return sendFile(res, path.join(webRoot, staticFiles[route]));
       fail(false, '페이지를 찾을 수 없습니다.', 404);
     } catch (error) {

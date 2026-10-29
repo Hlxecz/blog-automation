@@ -1,3 +1,4 @@
+import './runtime.mjs';
 // Real app UI and local persistence with disposable data; no AI or blog publication.
 import { app, BrowserWindow } from 'electron';
 import fs from 'node:fs';

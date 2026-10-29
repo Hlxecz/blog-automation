@@ -1,3 +1,4 @@
+import './runtime.mjs';
 // The real app with temporary data and a fake AI. No real blog reads or publishing.
 import { app, BrowserWindow } from 'electron';
 import fs from 'node:fs';

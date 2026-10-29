@@ -1,4 +1,4 @@
-const guides = {
+const windowsGuides = {
   codex: { name: 'Codex', company: 'OpenAI', account: 'Codex를 사용할 수 있는 본인의 ChatGPT 계정',
     install: 'npm.cmd install -g @openai/codex@latest', login: 'codex.cmd login', check: 'codex.cmd login status',
     prerequisite: 'Node.js 22 이상을 설치한 뒤 새 PowerShell 창을 열어 주세요.',
@@ -8,6 +8,17 @@ const guides = {
     prerequisite: 'Windows PowerShell에서 설치하세요. 설치 후 새 터미널을 열어 주세요.',
     docs: 'https://code.claude.com/docs/en/setup', update: 'winget upgrade Anthropic.ClaudeCode' }
 };
+export function aiGuides(platform) {
+  if (platform === 'win32') return windowsGuides;
+  return {
+    codex: { ...windowsGuides.codex, install: 'npm install -g @openai/codex@latest', login: 'codex login',
+      check: 'codex login status', update: 'npm install -g @openai/codex@latest',
+      prerequisite: 'Node.js 22 이상을 설치한 뒤 새 터미널 창을 열어 주세요.' },
+    claude: { ...windowsGuides.claude, install: 'curl -fsSL https://claude.ai/install.sh | bash',
+      update: 'claude update', prerequisite: '터미널에서 설치하세요. 설치 후 새 터미널을 열어 주세요.' }
+  };
+}
+const guides = windowsGuides;
 export const connectionMessage = ai => ({
   connected: `${guides[ai?.provider]?.name || 'Codex'} 연결됨`,
   missing: 'CLI를 찾지 못했어요 · 설치가 필요해요',
@@ -17,8 +28,9 @@ export const connectionMessage = ai => ({
   checking: '연결을 확인하고 있어요…'
 }[ai?.status] || 'AI 연결을 확인해 주세요');
 
-export function createAIHelp({ api, modal, toast, onChanged, getAI }) {
+export function createAIHelp({ api, modal, toast, onChanged, getAI, getPlatform = () => /Mac/.test(navigator.platform) ? 'darwin' : /Win/.test(navigator.platform) ? 'win32' : 'linux' }) {
   return async function openAIHelp() {
+    const platform = getPlatform(), guides = aiGuides(platform), terminal = platform === 'win32' ? 'PowerShell' : '터미널';
     const box = document.createElement('div'); box.className = 'ai-help';
     box.innerHTML = `<p class="ai-intro">초안 작성과 말투 분석에 사용할 AI를 선택하세요.<br>이 PC에 설치한 CLI에 본인 계정으로 로그인하면 연결됩니다.</p>
       <fieldset class="ai-options"><legend>사용할 AI</legend>
@@ -27,7 +39,7 @@ export function createAIHelp({ api, modal, toast, onChanged, getAI }) {
       </fieldset>
       <div class="ai-connection"><span id="ai-connection-status" role="status"></span><button id="ai-recheck" class="button secondary">연결 다시 확인</button></div>
       <div id="ai-guide"></div>
-      <details class="ai-faq"><summary>연결이 안 될 때</summary><p>설치 후 H.Dev Studio를 완전히 종료하고 다시 열어 주세요. Windows용 CLI를 설치해야 이 EXE에서 찾을 수 있어요. WSL 안에만 설치한 CLI는 연결되지 않습니다.</p><p>명령을 찾을 수 없다면 설치 안내의 PATH 설정을 확인하세요. 오래된 CLI는 아래 명령으로 업데이트한 뒤 다시 연결해 주세요.</p><div id="ai-update"></div><p>연결 확인은 로그인 상태를 확인합니다. 실제 AI 작업에는 인터넷 연결과 사용 가능한 계정 한도가 필요해요.</p></details>
+      <details class="ai-faq"><summary>연결이 안 될 때</summary><p>설치 후 H.Dev Studio를 완전히 종료하고 다시 열어 주세요. ${platform === 'win32' ? 'Windows용 CLI를 설치해야 앱에서 찾을 수 있어요. WSL 안에만 설치한 CLI는 연결되지 않습니다.' : '이 Mac에 CLI를 설치해야 앱에서 찾을 수 있어요. Homebrew·기본 설치·nvm·fnm·Volta 경로를 확인합니다.'}</p><p>명령을 찾을 수 없다면 설치 안내의 PATH 설정을 확인하세요. 오래된 CLI는 아래 명령으로 업데이트한 뒤 다시 연결해 주세요.</p><div id="ai-update"></div><p>연결 확인은 로그인 상태를 확인합니다. 실제 AI 작업에는 인터넷 연결과 사용 가능한 계정 한도가 필요해요.</p></details>
       <p class="ai-privacy">사진·메모·말투 지침과 분석할 공개 글 본문은 선택한 AI 제공사로 전송되며, 해당 계정의 요금·사용량 정책이 적용됩니다. 앱에서 비밀번호나 API 키를 입력받지 않습니다.</p>`;
     let state = getAI() || { provider: 'codex', status: 'checking' }, pending = false;
     const radios = [...box.querySelectorAll('[name="ai-provider"]')];
@@ -36,7 +48,7 @@ export function createAIHelp({ api, modal, toast, onChanged, getAI }) {
       const row = document.createElement('div'); row.className = 'ai-command';
       const code = document.createElement('code'); code.textContent = text;
       const copy = document.createElement('button'); copy.className = 'button secondary'; copy.textContent = '복사'; copy.setAttribute('aria-label', `${label} 명령 복사`);
-      copy.onclick = async () => { try { await navigator.clipboard.writeText(text); toast('명령을 복사했어요. PowerShell에 붙여넣으세요.'); } catch { toast('명령을 선택해 직접 복사해 주세요.', true); } };
+      copy.onclick = async () => { try { await navigator.clipboard.writeText(text); toast(`명령을 복사했어요. ${terminal}에 붙여넣으세요.`); } catch { toast('명령을 선택해 직접 복사해 주세요.', true); } };
       row.append(code, copy); return row;
     }
     function render() {

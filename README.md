@@ -8,20 +8,37 @@
   <strong>캡처에 담긴 개발 과정을, 내 말투의 티스토리 글로.</strong>
 </p>
 
-<p align="center">Windows x64 · Codex / Claude Code CLI · Tistory</p>
+<p align="center">Windows x64 / macOS arm64·x64 · Codex / Claude Code CLI · Tistory</p>
 
-개발 캡처와 메모를 분석해 초안을 만들고, 필요한 문단만 다듬어 검토한 뒤 티스토리에 발행하는 Windows 데스크톱 앱입니다. 이미 발행한 글도 불러와 같은 주소에서 수정할 수 있습니다.
+개발 캡처와 메모를 분석해 초안을 만들고, 필요한 문단만 다듬어 검토한 뒤 티스토리에 발행하는 Windows와 macOS 데스크톱 앱입니다. 이미 발행한 글도 불러와 같은 주소에서 수정할 수 있습니다.
 
 <p align="center">
-  <a href="https://github.com/Hlxecz/blog-automation/releases/tag/v0.9.5"><strong>Windows 앱 다운로드</strong></a>
+  <a href="https://github.com/Hlxecz/blog-automation/releases/tag/v0.11.1"><strong>Windows 다운로드</strong></a>
+  · <a href="https://github.com/Hlxecz/blog-automation/releases/tag/v0.11.1"><strong>Mac 다운로드</strong></a>
+</p>
+
+<p align="center">
+  📖 <a href="https://hlxecz.tistory.com/30"><strong>사용법 블로그 바로가기 →</strong></a><br>
+  설치부터 티스토리 발행까지, 실제 사용 방법을 블로그에서 확인하세요.
+</p>
+
+<p align="center">
+  <a href="docs/USAGE.md">사용 안내 문서</a>
   · <a href="docs/FEATURES.md">기능과 실제 화면</a>
-  · <a href="docs/USAGE.md">사용 안내</a>
   · <a href="CHANGELOG.md">변경 내역</a>
 </p>
 
 ## 화면
 
-![사진과 메모를 모으고 초안을 검토하는 H.Dev Studio 작업실](docs/assets/workspace.png)
+**0.11.1 작업실 · 다크 테마**
+
+![검은 사이드바와 주황빛 배너로 정리한 blog Studio 다크 작업실](docs/assets/workspace.png)
+
+**라이트 테마**
+
+![흰 배경과 밝은 회색 패널로 구성한 blog Studio 라이트 작업실](docs/assets/workspace-light.png)
+
+사이드바 아래에서 라이트·다크 테마를 선택합니다. 다음 실행에도 마지막 선택을 유지하며, 움직임 줄이기 설정에서는 오리 로고와 배너 반짝이가 정지합니다. Mac과 Windows는 같은 작업실 CSS와 내장 글꼴을 사용하며, 상단 빈 공간으로 창을 옮길 수 있습니다. 창 버튼 위치는 각 운영체제 방식을 따릅니다.
 
 [실제 화면으로 기능 자세히 보기 →](docs/FEATURES.md)
 
@@ -37,6 +54,7 @@
 - 공개 글을 작업실로 불러와 원문 형식으로 미리보고 같은 글 주소에 수정 반영
 - 가져온 글을 로컬에서 삭제한 뒤에도 다시 가져오기, 앱 재실행 후 로그인 세션 재사용
 - 사진·초안·편집 이력을 이 PC에 보관
+- 라이트·다크 테마 선택과 마지막 설정 복원
 
 ## 사용 흐름
 
@@ -51,9 +69,12 @@
 
 ## 다운로드
 
-[H.Dev Studio 0.9.5](https://github.com/Hlxecz/blog-automation/releases/tag/v0.9.5)에서 `HDev-Studio-0.9.5-win-x64.exe`를 받습니다. Windows 64비트용 무설치 실행 파일입니다.
+Windows와 Mac 모두 0.11.1 새 테마를 사용합니다. 아래 릴리즈에서 운영체제와 CPU에 맞는 파일을 받으세요.
 
-Windows에서 처음 받은 서명되지 않은 앱은 Microsoft Defender SmartScreen 안내가 나타날 수 있습니다. 배포 파일의 무결성은 Release에 함께 제공되는 `SHA256SUMS.txt`로 확인할 수 있습니다.
+- **Windows x64:** [0.11.1 릴리즈](https://github.com/Hlxecz/blog-automation/releases/tag/v0.11.1)의 무설치 EXE
+- **macOS:** [0.11.1 릴리즈](https://github.com/Hlxecz/blog-automation/releases/tag/v0.11.1)의 `arm64`(Apple Silicon)·`x64`(Intel) DMG 또는 ZIP
+
+파일 무결성은 릴리즈의 `SHA256SUMS.txt`로 확인합니다. 운영체제별 설치 안내는 [Windows](windows/README.md)·[macOS](macos/README.md)를 참고하세요.
 
 ## 기술 스택
 
@@ -67,19 +88,30 @@ Windows에서 처음 받은 서명되지 않은 앱은 Microsoft Defender SmartS
 | 발행 대상 | Tistory 편집 화면 |
 | 자동 검사 | Node Test Runner, Electron UI 검증, GitHub Actions |
 
-사용자 사진·초안·말투·계정 설정은 앱 자료 폴더에 저장하며 Git과 배포 EXE에 포함하지 않습니다. 기본 위치는 `%APPDATA%/H.Dev Studio/workspace`입니다.
+사진·초안·계정 설정은 이 PC에 보관하며 Git과 배포 앱에 포함하지 않습니다.
 
-## 개발 실행
+## 실행과 빌드
 
-Windows 64비트와 Node.js 22 이상이 필요합니다.
+Node.js 22 이상을 준비한 뒤 저장소 루트에서 실행합니다.
 
-```powershell
+```sh
 npm ci
 npm run setup
 npm run desktop
 ```
 
-`npm start`는 브라우저 개발 화면, `npm run desktop`은 티스토리 연결을 포함한 Electron 앱을 실행합니다. 배포용 EXE는 개발 확인을 마친 뒤 `npm run build:exe`로 만듭니다.
+| 운영체제 | 지원 | 빌드 명령 | 자세한 안내 |
+| --- | --- | --- | --- |
+| Windows | x64 | `npm run build:exe` | [Windows](windows/README.md) |
+| macOS | Apple Silicon·Intel | `npm run build:mac` | [macOS](macos/README.md) |
+
+빌드 결과는 `dist/<버전>/windows/`·`dist/<버전>/macos/`에 저장합니다. `npm start`는 웹 개발 화면을 엽니다.
+
+## 폴더 구조
+
+- `desktop/`·`scripts/`·`web/`: 두 운영체제가 함께 쓰는 앱 기능과 화면
+- `windows/`·`macos/`: 운영체제별 실행·빌드 스크립트와 안내
+- `config/`: 공유용 기본 설정 / `test/`·`validation/`: 자동 검사
 
 ## 검사
 
@@ -89,9 +121,11 @@ npm test
 npm run test:desktop
 npm run test:categories
 npm run test:writing
+npm run test:setup
 npm run test:account
 npm run test:refine
 npm run test:existing
+# macOS 추가 검사: npm run test:lifecycle
 ```
 
 자동 검사는 임시 자료와 모의 편집기를 사용하며 실제 티스토리에 테스트 글을 발행하지 않습니다.
