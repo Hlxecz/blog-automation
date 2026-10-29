@@ -1,0 +1,112 @@
+name: Publish verified release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version of the existing release draft
+        required: true
+      source:
+        description: Full source commit SHA used by both builds
+        required: true
+      windows_run:
+        description: Successful Windows build run ID
+        required: true
+      mac_run:
+        description: Successful macOS build run ID
+        required: true
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: publish-release-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      VERSION: ${{ inputs.version }}
+      SOURCE_SHA: ${{ inputs.source }}
+      WINDOWS_RUN: ${{ inputs.windows_run }}
+      MAC_RUN: ${{ inputs.mac_run }}
+    steps:
+      - name: Validate source and build runs
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$WINDOWS_RUN" =~ ^[0-9]+$ && "$MAC_RUN" =~ ^[0-9]+$ ]]
+          for run in "$WINDOWS_RUN" "$MAC_RUN"; do
+            gh api "repos/$GH_REPO/actions/runs/$run" > "run-$run.json"
+            jq -e --arg sha "$SOURCE_SHA" '.head_sha == $sha and .conclusion == "success" and .head_branch == "main" and .event == "workflow_dispatch"' "run-$run.json"
+          done
+          gh api "repos/$GH_REPO/commits/$SOURCE_SHA" --jq .sha | grep -Fx "$SOURCE_SHA"
+      - name: Download verified build artifacts
+        run: |
+          gh run download "$WINDOWS_RUN" --pattern 'hdev-studio-windows-*' --dir incoming/windows
+          gh run download "$MAC_RUN" --pattern 'hdev-studio-mac-*' --dir incoming/macos
+      - name: Verify files and prepare release metadata
+        shell: python
+        run: |
+          import hashlib, json, os, pathlib, shutil
+          version = os.environ['VERSION']
+          expected = {f'HDev-Studio-{version}-win-x64.exe'} | {f'HDev-Studio-{version}-mac-{arch}.{ext}' for arch in ['arm64', 'x64'] for ext in ['dmg', 'zip']}
+          output = pathlib.Path('publish'); output.mkdir()
+          entries = []
+          for manifest in pathlib.Path('incoming').rglob('release.json'):
+              metadata = json.loads(manifest.read_text())
+              assert metadata['version'] == version, manifest
+              for item in metadata.get('artifacts', [metadata]):
+                  name = item['filename']
+                  assert name in expected and pathlib.Path(name).name == name, name
+                  source = manifest.parent / name
+                  digest = hashlib.sha256(source.read_bytes()).hexdigest()
+                  assert digest == item['sha256'] and source.stat().st_size == item['bytes'], name
+                  assert not (output / name).exists(), name
+                  shutil.copy2(source, output / name)
+                  entries.append({'filename': name, 'bytes': item['bytes'], 'sha256': digest})
+          assert {e['filename'] for e in entries} == expected
+          entries.sort(key=lambda e: e['filename'])
+          (output / 'SHA256SUMS.txt').write_text(''.join(f"{e['sha256']}  {e['filename']}\n" for e in entries))
+          (output / 'release.json').write_text(json.dumps({'version': version, 'sourceCommit': os.environ['SOURCE_SHA'], 'artifacts': entries}, indent=2) + '\n')
+      - name: Find the existing unpublished draft
+        run: |
+          gh api --paginate --slurp "repos/$GH_REPO/releases" > releases.json
+          python3 - <<'PY'
+          import json, os, pathlib
+          releases = [r for page in json.load(open('releases.json')) for r in page]
+          version = os.environ['VERSION']
+          assert not any(r['tag_name'] == 'v' + version and not r['draft'] for r in releases), 'Already published'
+          drafts = [r for r in releases if r['draft'] and r['name'].startswith('H.Dev Studio ' + version + ' ·')]
+          assert len(drafts) == 1, 'Exactly one matching draft is required'
+          expected = {p.name for p in pathlib.Path('publish').iterdir()}
+          assert all(a['name'] in expected for a in drafts[0]['assets']), 'Unexpected draft asset'
+          pathlib.Path('release-id').write_text(str(drafts[0]['id']))
+          PY
+      - name: Upload files to the draft
+        run: |
+          release_id=$(cat release-id)
+          gh api --method PATCH "repos/$GH_REPO/releases/$release_id" -f tag_name="v$VERSION" -f target_commitish="$SOURCE_SHA" > /dev/null
+          gh release upload "v$VERSION" publish/* --clobber
+      - name: Verify uploaded bytes before publishing
+        run: |
+          release_id=$(cat release-id)
+          gh api "repos/$GH_REPO/releases/$release_id" > uploaded.json
+          python3 - <<'PY'
+          import hashlib, json, pathlib
+          release = json.load(open('uploaded.json'))
+          assert release['draft'], 'Only unpublished drafts may be modified'
+          expected = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in pathlib.Path('publish').iterdir()}
+          actual = {a['name']: a for a in release['assets']}
+          assert actual.keys() == expected.keys()
+          for name, digest in expected.items():
+              assert actual[name]['state'] == 'uploaded' and actual[name]['digest'] == 'sha256:' + digest, name
+          PY
+          gh release edit "v$VERSION" --draft=false --latest
