@@ -43,14 +43,14 @@ export function buildPlan(command, { platform = process.platform, arch = process
   if (command === 'build') {
     if (platform !== 'win32') throw new Error('Windows에서 EXE를 빌드하세요. Mac에서는 npm run build:mac을 사용하세요.');
     const info = releaseInfo(root);
-    return { info, filenames: [info.filename], args: ['--config', 'windows/electron-builder.cjs', '--win', 'portable', '--x64'] };
+    return { info, filenames: [info.filename], args: ['--config', 'windows/electron-builder.cjs', '--win', 'portable', '--x64', '--publish', 'never'] };
   }
   if (command !== 'build-mac') throw new Error('알 수 없는 빌드 명령입니다.');
   if (platform !== 'darwin') throw new Error('macOS에서 Mac 앱을 빌드하세요.');
   const architectures = all ? ['arm64', 'x64'] : [arch];
   const info = releaseInfo(root, { platform, arch: architectures[0] });
   return { info, filenames: architectures.flatMap(arch => releaseInfo(root, { platform, arch }).filenames),
-    args: ['--config', 'macos/electron-builder.cjs', '--mac', 'dmg', 'zip', ...architectures.map(arch => `--${arch}`)] };
+    args: ['--config', 'macos/electron-builder.cjs', '--mac', 'dmg', 'zip', ...architectures.map(arch => `--${arch}`), '--publish', 'never'] };
 }
 
 function run(command) {

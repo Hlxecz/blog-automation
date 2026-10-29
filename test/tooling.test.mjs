@@ -73,14 +73,14 @@ test('platform build configurations and checksums stay in separate output folder
   assert.throws(() => buildPlan('build-mac', { platform: 'win32', root }), /macOS/);
   assert.throws(() => releaseInfo(root, { platform: 'darwin', arch: '../outside' }), /지원하는/);
   const plan = buildPlan('build-mac', { platform: 'darwin', arch: 'arm64', root });
-  assert.deepEqual(plan.args, ['--config', 'macos/electron-builder.cjs', '--mac', 'dmg', 'zip', '--arm64']);
+  assert.deepEqual(plan.args, ['--config', 'macos/electron-builder.cjs', '--mac', 'dmg', 'zip', '--arm64', '--publish', 'never']);
   const all = buildPlan('build-mac', { platform: 'darwin', all: true, root });
-  assert.deepEqual(all.args, ['--config', 'macos/electron-builder.cjs', '--mac', 'dmg', 'zip', '--arm64', '--x64']);
+  assert.deepEqual(all.args, ['--config', 'macos/electron-builder.cjs', '--mac', 'dmg', 'zip', '--arm64', '--x64', '--publish', 'never']);
   assert.equal(all.filenames.length, 4);
   fs.mkdirSync(plan.info.directory, { recursive: true });
   for (const name of all.filenames) fs.writeFileSync(path.join(plan.info.directory, name), name);
   const windows = buildPlan('build', { platform: 'win32', root });
-  assert.deepEqual(windows.args, ['--config', 'windows/electron-builder.cjs', '--win', 'portable', '--x64']);
+  assert.deepEqual(windows.args, ['--config', 'windows/electron-builder.cjs', '--win', 'portable', '--x64', '--publish', 'never']);
   assert.notEqual(windows.info.directory, plan.info.directory);
   fs.mkdirSync(windows.info.directory, { recursive: true });
   fs.writeFileSync(path.join(windows.info.directory, windows.info.filename), 'Windows file');
