@@ -549,7 +549,7 @@ export function createApp({ root = ROOT, webRoot = path.join(ROOT, 'web'), gener
         fail(false, '요청한 기능을 찾을 수 없습니다.', 404);
       }
       if (req.method === 'GET' && route === '/article.css') { res.writeHead(200, { 'Content-Type':'text/css; charset=utf-8' }); return res.end(articleCss); }
-      const staticFiles = { '/': 'index.html', '/app.js': 'app.js', '/ai-help.js': 'ai-help.js', '/style-settings.js': 'style-settings.js', '/category-prompts.js': 'category-prompts.js', '/draft-model.js':'draft-model.js', '/article-renderer.js':'article-renderer.js', '/styles.css': 'styles.css', '/favicon.svg': 'favicon.svg', '/favicon.png': 'favicon.png', '/logo.png': 'logo.png' };
+      const staticFiles = { '/': 'index.html', '/app.js': 'app.js', '/theme.js': 'theme.js', '/ai-help.js': 'ai-help.js', '/style-settings.js': 'style-settings.js', '/category-prompts.js': 'category-prompts.js', '/draft-model.js':'draft-model.js', '/article-renderer.js':'article-renderer.js', '/styles.css': 'styles.css', '/favicon.svg': 'favicon.svg', '/favicon.png': 'favicon.png', '/logo.png': 'logo.png' };
       if (req.method === 'GET' && Object.hasOwn(staticFiles, route)) return sendFile(res, path.join(webRoot, staticFiles[route]));
       fail(false, '페이지를 찾을 수 없습니다.', 404);
     } catch (error) {

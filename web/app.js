@@ -5,8 +5,11 @@ import { initCategoryPrompts } from './category-prompts.js';
 import { createAIHelp, connectionMessage } from './ai-help.js';
 
 const $ = id => document.getElementById(id);
+document.documentElement.classList.toggle('desktop-mac', /Electron\//.test(navigator.userAgent) && /Mac/.test(navigator.platform));
 const escape = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]);
 const icons = {
+  sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5"/>',
+  moon:'<path d="M20.5 13A8.5 8.5 0 0 1 11 3.5 8.5 8.5 0 1 0 20.5 13Z"/>',
   github:'<path d="M9 19c-4.3 1.3-4.3-2.5-6-3m12 6v-3.5c0-1 .1-1.6-.5-2.2 3-.3 6.2-1.5 6.2-6.8A5.3 5.3 0 0 0 19.3 6c.1-.3.6-1.7-.1-3.5 0 0-1.2-.4-3.8 1.4a13.4 13.4 0 0 0-6.8 0C6 2.1 4.8 2.5 4.8 2.5 4.1 4.3 4.6 5.7 4.7 6a5.3 5.3 0 0 0-1.4 3.5c0 5.3 3.2 6.5 6.2 6.8-.5.5-.7 1.2-.5 2.2V22"/>',
   layout:'<rect x="3" y="3" width="18" height="18" rx="3"/><path d="M9 3v18"/>',
   archive:'<rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v12h14V8M10 12h4"/>',

@@ -44,6 +44,14 @@ try {
   assert.equal(before.ai.status, 'missing');
   assert.equal(runtime.dataRoot, process.env.HDEV_DATA_DIR);
   assert.equal(session.fromPartition(tistorySessionPartition).isPersistent(), true);
+  if (process.platform === 'darwin') {
+    assert.equal(win.getBackgroundColor(),'#000000');
+    assert.equal(win.isClosable(),true);
+    assert.equal(win.isMinimizable(),true);
+    assert.equal(win.isMaximizable(),true);
+    assert.equal(await win.webContents.executeJavaScript(`getComputedStyle(document.querySelector('.window-drag-region')).getPropertyValue('-webkit-app-region')`),'drag');
+    assert.equal(await win.webContents.executeJavaScript(`document.querySelector('.topbar').getBoundingClientRect().top >= 40`),true);
+  }
   stage = 'AI help'; console.log(`Desktop lifecycle: ${stage}`);
   const help = await win.webContents.executeJavaScript(`(() => {
     document.getElementById('help-nav').click();
