@@ -32,7 +32,8 @@ export function initializeData(root, bundle) {
     'tistory.config.json': 'config/tistory.example.json',
     'style/profile.md': 'config/style.example.md',
     'style/samples/source-notes.md': 'config/source-notes.example.md',
-    'docs/WRITING.md': 'docs/WRITING.md', 'AGENTS.md': 'AGENTS.md'
+    'docs/WRITING.md': 'docs/WRITING.md', 'AGENTS.md': 'AGENTS.md',
+    'docs/AGENT-REFERENCE.md': 'docs/AGENT-REFERENCE.md'
   };
   for (const [relative, source] of Object.entries(defaults)) {
     const destination = path.join(root, relative);

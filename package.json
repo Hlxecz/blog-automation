@@ -49,6 +49,7 @@
       "web/**/*",
       "config/**/*",
       "docs/WRITING.md",
+      "docs/AGENT-REFERENCE.md",
       "AGENTS.md",
       "package.json"
     ],
